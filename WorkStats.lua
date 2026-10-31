@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.24')
+script_version('1.25')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -548,6 +548,7 @@ local function removeJob(idx)
         if log[i].job == j.id then table.remove(log, i) end
     end
     stats[j.id], JOB_COLORS[j.id] = nil, nil
+    if tog.pendingRecover then tog.pendingRecover[j.id] = nil end
     table.remove(JOBS, idx)
     if selected > idx then selected = selected - 1 end
     if selected > #JOBS then selected = #JOBS end
@@ -559,24 +560,38 @@ local function removeJob(idx)
 end
 
 ------------------------------------------------------------------
--- Защита сеансов: автосохранение незавершённых сеансов в файл (раз в 5 сек),
--- восстановление после вылета и автозавершение при кике / выходе из игры
+-- Защита сеансов. Незавершённый сеанс НЕ попадает в историю сам:
+--  * каждые 5 секунд он записывается в файл work_stats_active.cfg;
+--  * выход из игры (/q), вылет, перезагрузка скрипта, кик, потеря соединения -
+--    сеанс остаётся «незавершённым»;
+--  * при следующем заходе (или сразу после переподключения) на вкладке «Сеанс»
+--    нужной работы появляется баннер: «Продолжить» или «В историю».
+-- Незавершённые сеансы хранятся в tog.pendingRecover и переживают сколько угодно перезапусков,
+-- пока вы не решите их судьбу.
 ------------------------------------------------------------------
 tog.activePath = getWorkingDirectory() .. '\\config\\work_stats_active.cfg'
 tog.activeOn, tog.lastActive, tog.offSince, tog.recovered = false, os.clock(), nil, nil
+tog.notify = false -- после кика/обрыва: напомнить в чате, когда соединение вернётся
 
 function tog.hasData(st)
     return st and (st.sEarned > 0 or st.sSpent > 0 or st.sSecs > 5)
 end
 
--- записать все незавершённые сеансы; если их нет - удалить файл. Возвращает true, если файл записан
+-- записать текущие сеансы и все ещё не решённые незавершённые; если их нет - удалить файл.
+-- Возвращает true, если файл записан
 function tog.saveActive()
     local lines = {}
+    local nowTs = os.date('%d.%m_%H:%M')
     for _, j in ipairs(JOBS) do
         local st = stats[j.id]
         if tog.hasData(st) then
-            lines[#lines + 1] = ('%s %d %d %d %d'):format(j.id, math.floor(st.sSecs), math.floor(st.sEarned),
-                math.floor(st.sSpent), st.sCount)
+            lines[#lines + 1] = ('%s %d %d %d %d %s'):format(j.id, math.floor(st.sSecs), math.floor(st.sEarned),
+                math.floor(st.sSpent), st.sCount, nowTs)
+        end
+        local r = tog.pendingRecover and tog.pendingRecover[j.id]
+        if r then
+            lines[#lines + 1] = ('%s %d %d %d %d %s'):format(j.id, math.floor(r.secs), math.floor(r.earned),
+                math.floor(r.spent), r.count, r.ts)
         end
     end
     if #lines == 0 then
@@ -595,27 +610,45 @@ function tog.saveActive()
     return true
 end
 
--- при запуске: если остался файл, значит прошлый сеанс оборвался (вылет) - предлагаем
--- человеку продолжить его или сохранить в историю (см. tog.pendingRecover и tog.resolveRecover)
 tog.pendingRecover = {} -- [id] = { secs, earned, spent, count, ts }
+
+-- положить сеанс в «незавершённые» (если там уже есть сеанс этой работы - суммируем)
+function tog.stash(id, r)
+    local p = tog.pendingRecover[id]
+    if p then
+        p.secs, p.earned, p.spent, p.count = p.secs + r.secs, p.earned + r.earned, p.spent + r.spent, p.count + r.count
+    else
+        tog.pendingRecover[id] = r
+    end
+end
+
+-- при запуске: читаем файл прошлых сеансов (выход, вылет, перезагрузка) и ставим их в «незавершённые»
 function tog.recoverActive()
     local f = io.open(tog.activePath, 'r')
     if not f then return end
     local head = f:read('*l') or ''
     local savedAt = tonumber(head:match('^T (%d+)')) or os.time()
-    local ts = os.date('%d.%m_%H:%M', savedAt)
+    local headTs = os.date('%d.%m_%H:%M', savedAt)
     local n = 0
     for line in f:lines() do
-        local id, secs, earned, spent, count = line:match('^(%w+) (%d+) (%d+) (%d+) (%d+)')
+        local id, secs, earned, spent, count, ts = line:match('^(%w+) (%d+) (%d+) (%d+) (%d+) ?(%S*)')
         if id and stats[id] then
-            tog.pendingRecover[id] = { secs = tonumber(secs), earned = tonumber(earned),
-                                       spent = tonumber(spent), count = tonumber(count), ts = ts }
+            tog.stash(id, { secs = tonumber(secs), earned = tonumber(earned), spent = tonumber(spent),
+                            count = tonumber(count), ts = (ts ~= '' and ts) or headTs })
             n = n + 1
         end
     end
     f:close()
-    os.remove(tog.activePath)
-    if n > 0 then tog.recovered = n end
+    if n > 0 then
+        tog.activeOn = true -- файл остаётся, пока вы не решите судьбу сеанса
+        tog.recovered = n
+        -- сразу выбираем работу с незавершённым сеансом, чтобы баннер был виден
+        for i, j in ipairs(JOBS) do
+            if tog.pendingRecover[j.id] then selected = i; break end
+        end
+    else
+        os.remove(tog.activePath)
+    end
 end
 tog.recoverActive()
 
@@ -626,7 +659,8 @@ function tog.resolveRecover(id, continueIt)
     tog.pendingRecover[id] = nil
     if continueIt then
         local s = stats[id]
-        s.sEarned, s.sSecs, s.sCount, s.sSpent = r.earned, r.secs, r.count, r.spent
+        s.sEarned, s.sSecs = s.sEarned + r.earned, s.sSecs + r.secs
+        s.sCount, s.sSpent = s.sCount + r.count, s.sSpent + r.spent
         running = id
         tog.act = os.clock()
         lastMoney = readMoney()
@@ -644,17 +678,27 @@ function tog.resolveRecover(id, continueIt)
     saveStats()
 end
 
--- завершить все сеансы, где есть данные (кик, обрыв связи, выход из игры, выгрузка скрипта)
-function tog.finishAll(reason)
-    local n = 0
-    for _, j in ipairs(JOBS) do
-        if tog.hasData(stats[j.id]) then
-            finishSession(j.id)
-            n = n + 1
+-- кик / обрыв связи: сеансы НЕ идут в историю, а помечаются незавершёнными
+-- (баннер «Продолжить / В историю» на вкладке «Сеанс»)
+function tog.suspendAll(reason)
+    local n, last = 0, nil
+    for i, j in ipairs(JOBS) do
+        local st = stats[j.id]
+        if tog.hasData(st) then
+            tog.stash(j.id, { secs = math.floor(st.sSecs), earned = math.floor(st.sEarned),
+                spent = math.floor(st.sSpent), count = st.sCount, ts = os.date('%d.%m_%H:%M') })
+            resetSession(j.id)
+            n, last = n + 1, i
         end
     end
     running = nil
-    if n > 0 and reason then pcall(say, reason) end
+    if n > 0 then
+        selected = last
+        tog.notify = true
+        tog.saveActive()
+        saveStats()
+        if reason then pcall(say, reason) end
+    end
     return n
 end
 
@@ -855,15 +899,21 @@ local function tick()
     end
     lastMoney = m
 
-    -- кик / обрыв соединения / выход на экран подключения: незавершённые сеансы - в историю
+    -- кик / обрыв соединения: сеанс не идёт в историю, а помечается незавершённым
+    -- (потом его можно продолжить на вкладке «Сеанс»)
     if isSampAvailable() and sampGetGamestate() ~= 3 then
         tog.offSince = tog.offSince or now
         if now - tog.offSince > 3 then
-            tog.finishAll('соединение потеряно - сеанс завершён и сохранён в историю')
+            tog.suspendAll('соединение потеряно - сеанс помечен незавершённым')
             tog.icons = {}
         end
     else
         tog.offSince = nil
+        -- соединение вернулось: напоминаем, что есть сеанс, который можно продолжить
+        if tog.notify and next(tog.pendingRecover) then
+            tog.notify = false
+            say('есть незавершённый сеанс. /wss - продолжить или сохранить в историю')
+        end
     end
 
     -- автопауза: долго нет выплат
@@ -1087,6 +1137,12 @@ local function draw()
                 local pulse = 0.5 + 0.5 * math.sin(os.clock() * 4)
                 dl:AddCircleFilled(imgui.ImVec2(cx, cy), (4 + 3 * pulse) * scale, U32(GREEN[1], GREEN[2], GREEN[3], 0.18), 16)
                 dl:AddCircleFilled(imgui.ImVec2(cx, cy), 4 * scale, U32(GREEN[1], GREEN[2], GREEN[3], 1), 12)
+            elseif tog.pendingRecover[j.id] then
+                -- есть незавершённый сеанс (после выхода / кика): кольцо в цвете работы
+                local cx, cy = p2.x - dotOff * scale, sp.y + rowH / 2
+                local pulse = 0.5 + 0.5 * math.sin(os.clock() * 3)
+                dl:AddCircle(imgui.ImVec2(cx, cy), (4.5 + 1.5 * pulse) * scale, U32(col[1], col[2], col[3], 0.9), 16, 1.5)
+                dl:AddCircleFilled(imgui.ImVec2(cx, cy), 2 * scale, U32(col[1], col[2], col[3], 1), 10)
             end
             -- удаление пользовательской работы (два клика)
             if not j.builtin then
@@ -1282,7 +1338,7 @@ local function draw()
     if tab == 1 then
         local profit = s.sEarned - s.sSpent
 
-        -- баннер: найден незавершённый сеанс этой работы (после вылета / кика) - продолжить или сохранить в историю
+        -- баннер: найден незавершённый сеанс этой работы (после выхода / вылета / кика) - продолжить или сохранить в историю
         local topEff = top
         local rec = tog.pendingRecover[job.id]
         if rec then
@@ -1290,7 +1346,7 @@ local function draw()
             dl:AddRectFilled(P(mx, top), P(mx + MW, top + bnH), U32(jc[1], jc[2], jc[3], 0.12), 14 * scale)
             dl:AddRect(P(mx, top), P(mx + MW, top + bnH), U32(jc[1], jc[2], jc[3], 0.35), 14 * scale)
             local recNet = rec.earned - rec.spent
-            local l1 = icl('hourglass', ('Незавершённый сеанс от %s'):format(rec.ts:gsub('_', ' ')))
+            local l1 = icl('hourglass', ('Незавершённый сеанс от %s'):format((rec.ts:gsub('_', ' '))))
             local l2 = ('%s%s  ·  %s  ·  %s  ·  %d заказов'):format((recNet >= 0) and '+' or '-',
                 fmtMoney(math.abs(recNet)), fmtMoney(rec.earned), fmtTime(rec.secs), rec.count)
             drawText(dl, P(mx + 16 * scale, top + 10 * scale), U32(0.92, 0.93, 0.96, 1), l1)
@@ -2257,7 +2313,7 @@ function main()
     say('загружен. /wss - открыть меню статистики работ')
     if not sampev then say('не найдена библиотека SAMP.Lua - доход такси считаться не будет') end
     if tog.recovered then
-        say(('найден незавершённый сеанс (после вылета игры): %d. /wss - продолжить или сохранить в историю'):format(tog.recovered))
+        say('найден незавершённый сеанс (выход, вылет или кик). /wss - продолжить или сохранить в историю')
     end
     tog.checkUpdate(true) -- тихая проверка обновлений при запуске
 
@@ -2271,9 +2327,11 @@ function main()
     end
 end
 
+-- выход из игры (/q), вылет, перезагрузка или выгрузка скрипта:
+-- сеанс НЕ уходит в историю, а сохраняется в файл и остаётся «незавершённым»
 function onScriptTerminate(scr, quit)
     if scr == thisScript() then
-        pcall(tog.finishAll) -- незавершённые сеансы - в историю (выход из игры, перезагрузка скрипта)
+        pcall(tog.saveActive)
         saveStats()
         if locked then lockPlayerControl(false) end
     end
