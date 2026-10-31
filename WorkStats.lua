@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.20')
+script_version('1.19')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -43,6 +43,8 @@ local ICONS = {
     palette = 0xF53F,    -- palette (вкладка Темы)
     winclose = 0xF00D,   -- xmark (закрыть меню)
     map = 0xF279,        -- map (быстрая карта)
+    sync = 0xF021,       -- arrows-rotate (проверка обновлений)
+    download = 0xF019,   -- download (скачать обновление)
 }
 local ICON_FALLBACK = { close = 'x', winclose = 'x', plus = '+', trash = 'x', gear = '*', back = '<' }
 local iconsOk = false
@@ -365,7 +367,7 @@ local lastTick = os.clock()
 local lastSave = os.clock()
 local balance = nil
 local me = { nick = '', id = -1 }
-local tab = 1             -- 1 = сеанс, 2 = история, 4 = настройки, 5 = обновления
+local tab = 1             -- 1 = сеанс, 2 = история
 local log = {}            -- завершённые сеансы
 local confirmClear = 0
 local hs = { job = nil, target = 0, cur = 0, set = 0, last = os.clock() } -- плавная прокрутка истории
@@ -381,140 +383,6 @@ local function U32(r, g, b, a) return imgui.ColorConvertFloat4ToU32(imgui.ImVec4
 
 local function say(text)
     sampAddChatMessage(u8:decode('[WorkStats] ' .. text), 0xFF779ECB)
-end
-
-------------------------------------------------------------------
--- Обновления через публичный GitHub-репозиторий
--- В репозитории должны лежать WorkStats.lua и version.txt.
-------------------------------------------------------------------
-local UPDATE_BASE = 'https://raw.githubusercontent.com/17avangard/workstats/main/'
-local UPDATE_VERSION_URL = UPDATE_BASE .. 'version.txt'
-local UPDATE_SCRIPT_URL = UPDATE_BASE .. 'WorkStats.lua'
-local UPDATE_CURRENT = '1.20'
-local updater = {
-    status = 'Нажмите «Проверить обновления»',
-    latest = nil,
-    busy = false,
-    available = false,
-    ready = false,
-    tempVersion = getWorkingDirectory() .. '\\config\\workstats_remote_version.tmp',
-    tempScript = getWorkingDirectory() .. '\\config\\WorkStats_update.tmp',
-}
-
-local function readSmallFile(path)
-    local f = io.open(path, 'rb')
-    if not f then return nil end
-    local value = f:read('*a')
-    f:close()
-    return value
-end
-
-local function versionParts(v)
-    local out = {}
-    for n in tostring(v or ''):gmatch('%d+') do out[#out + 1] = tonumber(n) end
-    return out
-end
-
-local function versionIsNewer(remote, current)
-    local a, b = versionParts(remote), versionParts(current)
-    for i = 1, math.max(#a, #b) do
-        local x, y = a[i] or 0, b[i] or 0
-        if x ~= y then return x > y end
-    end
-    return false
-end
-
-local function updaterCheck()
-    if updater.busy then return end
-    if type(downloadUrlToFile) ~= 'function' then
-        updater.status = 'В этой сборке MoonLoader нет загрузчика файлов'
-        return
-    end
-    pcall(os.remove, updater.tempVersion)
-    updater.busy = true
-    updater.available = false
-    updater.ready = false
-    updater.status = 'Проверяем GitHub...'
-    local ok, err = pcall(downloadUrlToFile, UPDATE_VERSION_URL, updater.tempVersion, function()
-        updater.busy = false
-        local raw = readSmallFile(updater.tempVersion)
-        local remote = raw and raw:match('([%d%.]+)')
-        if not remote then
-            updater.status = 'Не удалось прочитать version.txt'
-            return
-        end
-        updater.latest = remote
-        if versionIsNewer(remote, UPDATE_CURRENT) then
-            updater.available = true
-            updater.status = 'Доступна новая версия: ' .. remote
-        else
-            updater.status = 'Установлена последняя версия (' .. UPDATE_CURRENT .. ')'
-        end
-    end)
-    if not ok then
-        updater.busy = false
-        updater.status = 'Ошибка проверки: ' .. tostring(err)
-    end
-end
-
-local function updaterDownload()
-    if updater.busy or not updater.available then return end
-    pcall(os.remove, updater.tempScript)
-    updater.busy = true
-    updater.ready = false
-    updater.status = 'Скачиваем WorkStats.lua...'
-    local ok, err = pcall(downloadUrlToFile, UPDATE_SCRIPT_URL, updater.tempScript, function()
-        updater.busy = false
-        local f = io.open(updater.tempScript, 'rb')
-        if not f then updater.status = 'Не удалось скачать файл обновления'; return end
-        local size = f:seek('end') or 0
-        f:seek('set', 0)
-        local head = f:read(512) or ''
-        f:close()
-        if size < 10000 or not head:find([[script_name%(['"]WorkStats['"]%)]]) then
-            pcall(os.remove, updater.tempScript)
-            updater.status = 'Файл на GitHub не похож на WorkStats.lua'
-            return
-        end
-        local body = readSmallFile(updater.tempScript) or ''
-        local fileVersion = body:match([[script_version%(['"]([%d%.]+)['"]%)]])
-        if not fileVersion or (updater.latest and fileVersion ~= updater.latest) then
-            pcall(os.remove, updater.tempScript)
-            updater.status = 'Версия файла не совпадает с version.txt'
-            return
-        end
-        updater.ready = true
-        updater.status = 'Обновление скачано. Перезапустите скрипт для установки.'
-    end)
-    if not ok then
-        updater.busy = false
-        updater.status = 'Ошибка загрузки: ' .. tostring(err)
-    end
-end
-
-local function installPendingUpdate()
-    local scriptObj = thisScript()
-    local scriptPath = scriptObj and scriptObj.path
-    if type(scriptPath) ~= 'string' or scriptPath == '' then return false end
-    local tempPath = updater.tempScript
-    if not doesFileExist(tempPath) then return false end
-    local backupPath = scriptPath .. '.bak'
-    pcall(os.remove, backupPath)
-    local src = io.open(scriptPath, 'rb')
-    if src then
-        local old = src:read('*a')
-        src:close()
-        local bak = io.open(backupPath, 'wb')
-        if bak then bak:write(old); bak:close() end
-    end
-    local newData = readSmallFile(tempPath)
-    if not newData or #newData < 10000 then return false end
-    local target = io.open(scriptPath, 'wb')
-    if not target then return false end
-    local okWrite = pcall(function() target:write(newData); target:close() end)
-    if not okWrite then pcall(function() target:close() end); return false end
-    pcall(os.remove, tempPath)
-    return true
 end
 
 local function fmtMoney(n)
@@ -768,6 +636,136 @@ function tog.finishAll(reason)
 end
 
 ------------------------------------------------------------------
+-- GitHub: автозагрузка карты и обновление скрипта
+-- Репозиторий: https://github.com/17avangard/workstats
+-- Файлы в ветке main: WorkStats.lua, map.jpg, version.txt
+------------------------------------------------------------------
+tog.dl = require('moonloader').download_status
+tog.GH = 'https://raw.githubusercontent.com/17avangard/workstats/main/'
+tog.up = { st = 'idle', remote = nil, done = false, silent = false, t0 = 0 }
+tog.upTmp = getWorkingDirectory() .. '\\config\\work_stats_new.tmp'
+
+function tog.readAll(path)
+    local f = io.open(path, 'rb')
+    if not f then return nil end
+    local d = f:read('*a')
+    f:close()
+    return d
+end
+
+-- true, если версия a новее версии b ("1.20" > "1.19")
+function tog.isNewer(a, b)
+    local x, y = {}, {}
+    for n in tostring(a):gmatch('%d+') do x[#x + 1] = tonumber(n) end
+    for n in tostring(b):gmatch('%d+') do y[#y + 1] = tonumber(n) end
+    for i = 1, math.max(#x, #y) do
+        local p, q = x[i] or 0, y[i] or 0
+        if p ~= q then return p > q end
+    end
+    return false
+end
+
+-- kind: 'checking' (качаем version.txt) или 'loading' (качаем сам скрипт)
+function tog.upStart(kind)
+    local u = tog.up
+    pcall(createDirectory, getWorkingDirectory() .. '\\config')
+    os.remove(tog.upTmp)
+    u.st, u.done, u.t0 = kind, false, os.clock()
+    local file = (kind == 'checking') and 'version.txt' or 'WorkStats.lua'
+    downloadUrlToFile(tog.GH .. file .. '?t=' .. os.time(), tog.upTmp, function(id, status)
+        if status == tog.dl.STATUSEX_ENDDOWNLOAD then u.done = true end
+    end)
+end
+
+function tog.checkUpdate(silent)
+    if tog.up.st == 'checking' or tog.up.st == 'loading' then return end
+    tog.up.silent = silent
+    tog.upStart('checking')
+end
+
+-- путь к карте, если она уже лежит на диске
+function tog.mapFile()
+    local wd = getWorkingDirectory()
+    for _, p in ipairs({
+        wd .. '\\resource\\workstats\\map.png', wd .. '\\resource\\workstats\\map.jpg',
+        wd .. '\\resource\\map.png', wd .. '\\config\\work_stats_map.png',
+    }) do
+        if doesFileExist(p) then return p end
+    end
+end
+
+-- если карты нет - скачиваем map.jpg с GitHub (сначала во временный файл)
+function tog.mapFetch()
+    local m = tog.map
+    if not m.on or m.tex or tog.mapFile() then return end
+    local wd = getWorkingDirectory()
+    local dst = wd .. '\\resource\\workstats\\map.jpg'
+    local tmp = dst .. '.tmp'
+    if m.dl == 'done' then
+        local d = tog.readAll(tmp)
+        if d and #d > 10000 then
+            os.remove(dst)
+            os.rename(tmp, dst)
+            m.dl = 'ok'
+        else
+            os.remove(tmp)
+            m.dl, m.dlT = 'err', os.clock()
+        end
+    elseif m.dl == 'loading' then
+        if os.clock() - m.dlT > 90 then m.dl, m.dlT = 'err', os.clock() end
+    elseif m.dl == nil or m.dl == 'ok' or (m.dl == 'err' and os.clock() - m.dlT > 60) then
+        pcall(createDirectory, wd .. '\\resource')
+        pcall(createDirectory, wd .. '\\resource\\workstats')
+        os.remove(tmp)
+        m.dl, m.dlT = 'loading', os.clock()
+        downloadUrlToFile(tog.GH .. 'map.jpg', tmp, function(id, status)
+            if status == tog.dl.STATUSEX_ENDDOWNLOAD then m.dl = 'done' end
+        end)
+    end
+end
+
+-- вызывается из tick(): обрабатывает завершённые загрузки
+function tog.updTick()
+    local u = tog.up
+    if u.st == 'checking' then
+        if u.done then
+            local v = (tog.readAll(tog.upTmp) or ''):match('%d+[%.%d]*')
+            os.remove(tog.upTmp)
+            if not v then
+                u.st = 'err'
+            elseif tog.isNewer(v, thisScript().version) then
+                u.st, u.remote = 'avail', v
+                if u.silent then say('доступно обновление v' .. v .. ': /wss - Настройки') end
+            else
+                u.st = 'latest'
+            end
+        elseif os.clock() - u.t0 > 15 then
+            u.st = 'err'
+        end
+    elseif u.st == 'loading' then
+        if u.done then
+            local d = tog.readAll(tog.upTmp)
+            os.remove(tog.upTmp)
+            local ok = d and #d > 5000 and d:find('script_name', 1, true)
+            if ok then
+                local f = io.open(thisScript().path, 'wb')
+                if f then f:write(d); f:close() else ok = false end
+            end
+            if ok then
+                u.st = 'reload'
+                say('обновлено до v' .. tostring(u.remote) .. ', перезагрузка...')
+                thisScript():reload()
+            else
+                u.st = 'err'
+            end
+        elseif os.clock() - u.t0 > 60 then
+            u.st = 'err'
+        end
+    end
+    tog.mapFetch()
+end
+
+------------------------------------------------------------------
 -- Подсчёт: рост денег = доход (для такси - только выплаты за заказы
 -- по сообщению сервера), падение = расход, пока включён сеанс
 ------------------------------------------------------------------
@@ -793,6 +791,8 @@ local function tick()
     local now = os.clock()
     local dt = now - lastTick
     lastTick = now
+
+    tog.updTick() -- обновления и автозагрузка карты
 
     local m = readMoney()
     balance = m
@@ -1167,17 +1167,12 @@ local function draw()
     if fontTitle then imgui.PushFont(fontTitle) end
     local tlh = imgui.GetTextLineHeight()
     local tw = imgui.CalcTextSize(job.name).x
-    if tab == 4 or tab == 5 then
-    -- шапка настроек / обновлений
-    local pageTitle = (tab == 5) and 'Обновления' or 'Настройки'
-    dl:AddText(P(mx + cb + 12 * scale, y + (cb - tlh) / 2), U32(0.94, 0.95, 0.98, 1), pageTitle)
+    if tab == 4 then
+    -- шапка настроек: кнопка «назад» и заголовок
+    dl:AddText(P(mx + cb + 12 * scale, y + (cb - tlh) / 2), U32(0.94, 0.95, 0.98, 1), 'Настройки')
     if fontTitle then imgui.PopFont() end
     imgui.SetCursorPos(imgui.ImVec2(mx, y))
-    if styledButton('##back', ic('back'), cb, cb, false) then tab = (tab == 5) and 4 or (tog.prevTab or 1); tog.themeOpen = false end
-    if tab == 4 then
-        imgui.SetCursorPos(imgui.ImVec2(mx + MW - 126 * scale, y))
-        if styledButton('##openupdates', 'Обновления', 116 * scale, cb, false) then tab = 5 end
-    end
+    if styledButton('##back', ic('back'), cb, cb, false) then tab = tog.prevTab or 1; tog.themeOpen = false end
     else
     local hb = math.floor(tlh)
     local nx = mx + hb + 10 * scale
@@ -1195,6 +1190,26 @@ local function draw()
     dl:AddRectFilled(P(chX, chY), P(chX + chW, chY + chH), U32(cc[1], cc[2], cc[3], 0.15), chH / 2)
     dl:AddCircleFilled(P(chX + 13 * scale, chY + chH / 2), 3 * scale, U32(cc[1], cc[2], cc[3], 1), 10)
     dl:AddText(P(chX + 22 * scale, chY + (chH - lh) / 2), U32(cc[1], cc[2], cc[3], 1), chipTxt)
+    end
+
+    -- кнопка обновления (только в настройках): проверить / скачать новую версию с GitHub
+    if tab == 4 then
+        local up, lbl = tog.up, nil
+        if up.st == 'checking' then lbl = 'Проверка...'
+        elseif up.st == 'avail' then lbl = icl('download', 'Обновить до v' .. tostring(up.remote))
+        elseif up.st == 'loading' or up.st == 'reload' then lbl = 'Скачивание...'
+        elseif up.st == 'latest' then lbl = 'Версия актуальна (v' .. thisScript().version .. ')'
+        elseif up.st == 'err' then lbl = 'Ошибка. Повторить'
+        else lbl = icl('sync', 'Проверить обновления') end
+        local ubw = math.floor(textWidth(lbl) + 32 * scale)
+        imgui.SetCursorPos(imgui.ImVec2(W - PAD - cb - 8 * scale - ubw, PAD))
+        if styledButton('##upd', lbl, ubw, cb, up.st == 'avail') then
+            if up.st == 'avail' then
+                tog.upStart('loading')
+            elseif up.st ~= 'checking' and up.st ~= 'loading' and up.st ~= 'reload' then
+                tog.checkUpdate(false)
+            end
+        end
     end
 
     imgui.SetCursorPos(imgui.ImVec2(W - PAD - cb, PAD))
@@ -1405,7 +1420,7 @@ local function draw()
         local sw = imgui.CalcTextSize(sumStr).x
         dl:AddText(P(mx + math.max(0, (MW - sw) / 2), by2 + bh + 6 * scale), U32(0.62, 0.64, 0.70, 1), sumStr)
 
-    elseif tab == 4 then
+    else
         -- настройки
         drawText(dl, P(mx, top), GRAY, icl('gear', 'Общие настройки'))
         -- переключатель: плашка расстояния до метки
@@ -1674,35 +1689,6 @@ local function draw()
             end
         end
 
-    elseif tab == 5 then
-        drawText(dl, P(mx, top), GRAY, 'Обновления WorkStats')
-        local cardY = top + lh + 12 * scale
-        local cardH = 118 * scale
-        dl:AddRectFilled(P(mx, cardY), P(mx + MW, cardY + cardH), U32(PANEL[1], PANEL[2], PANEL[3], 1), 12 * scale)
-        dl:AddRect(P(mx, cardY), P(mx + MW, cardY + cardH), U32(1, 1, 1, 0.07), 12 * scale)
-        drawText(dl, P(mx + 16 * scale, cardY + 14 * scale), U32(0.92, 0.93, 0.96, 1), 'Текущая версия: ' .. UPDATE_CURRENT)
-        drawText(dl, P(mx + 16 * scale, cardY + 40 * scale), GRAY, 'Последняя версия: ' .. (updater.latest or 'не проверена'))
-        local statusText = updater.status
-        local statusColor = updater.available and GREEN or GRAY
-        drawText(dl, P(mx + 16 * scale, cardY + 70 * scale), U32(statusColor[1], statusColor[2], statusColor[3], 1), fitText(statusText, MW - 32 * scale))
-
-        local btnY = cardY + cardH + 18 * scale
-        local halfW = (MW - 10 * scale) / 2
-        imgui.SetCursorPos(imgui.ImVec2(mx, btnY))
-        if styledButton('##updatecheck', updater.busy and 'Проверка...' or 'Проверить обновления', halfW, bh, false) and not updater.busy then
-            updaterCheck()
-        end
-        imgui.SetCursorPos(imgui.ImVec2(mx + halfW + 10 * scale, btnY))
-        local downloadLabel = updater.ready and 'Скачано' or 'Скачать и установить'
-        if styledButton('##updatedownload', downloadLabel, halfW, bh, updater.available and not updater.ready) and updater.available and not updater.busy and not updater.ready then
-            updaterDownload()
-        end
-        if updater.ready then
-            drawText(dl, P(mx + 2 * scale, btnY + bh + 18 * scale), U32(GREEN[1], GREEN[2], GREEN[3], 1), 'Файл готов. Перезагрузите WorkStats через меню MoonLoader.')
-        else
-            drawText(dl, P(mx + 2 * scale, btnY + bh + 18 * scale), GRAY, 'Источник: github.com/17avangard/workstats')
-        end
-
     end
 
     -- подсказка / баланс для проверки
@@ -1900,75 +1886,26 @@ tog.miFrame.HideCursor = true
 
 ------------------------------------------------------------------
 -- Быстрая карта: полупрозрачная карта поверх игры, пока зажата выбранная клавиша.
--- Нужна квадратная картинка карты (север сверху, весь мир San Andreas: -3000..3000):
--- moonloader\resource\workstats\map.png
+-- Картинка карты (квадратная, север сверху, весь мир San Andreas: -3000..3000)
+-- скачивается с GitHub автоматически: moonloader\resource\workstats\map.jpg
 ------------------------------------------------------------------
 tog.MAP_FRAC = 0.62 -- размер карты: доля от меньшей стороны экрана
 
 function tog.mapTexture()
     local m = tog.map
     if m.tex then return m.tex end
-
-    local wd = getWorkingDirectory()
-    local mapDir = wd .. '\\resource\\workstats'
-    local downloadedMap = mapDir .. '\\map.jpg'
-
-    -- Сначала пробуем загрузить уже имеющуюся локальную карту.
-    for _, path in ipairs({
-        downloadedMap,
-        wd .. '\\resource\\workstats\\map.png',
-        wd .. '\\resource\\map.png',
-        wd .. '\\config\\work_stats_map.png',
-    }) do
-        if doesFileExist(path) then
-            local ok, tex = pcall(imgui.CreateTextureFromFile, path)
-            if ok and tex ~= nil then
-                m.tex, m.texPath = tex, path
-                return tex
-            end
-        end
-    end
-
-    -- Если карты нет, автоматически скачиваем её из публичного GitHub-репозитория.
-    if m.downloading or (m.tried and m.tried > 0 and os.clock() - m.tried < 30) then return nil end
+    if os.clock() - m.tried < 5 then return nil end -- не чаще раза в 5 секунд
     m.tried = os.clock()
-
-    if type(downloadUrlToFile) ~= 'function' then
-        m.downloadError = 'Функция загрузки MoonLoader недоступна'
-        return nil
-    end
-
-    local okDir = pcall(createDirectory, wd .. '\\resource')
-    pcall(createDirectory, mapDir)
-    m.downloading = true
-    m.downloadError = nil
-
-    local url = 'https://raw.githubusercontent.com/17avangard/workstats/main/map.jpg'
-    local ok, err = pcall(downloadUrlToFile, url, downloadedMap, function(id, status, p1, p2)
-        m.downloading = false
-        -- Проверяем сам файл, а не только код callback: разные сборки MoonLoader
-        -- могут передавать разные значения status.
-        local f = io.open(downloadedMap, 'rb')
-        if f then
-            local size = f:seek('end') or 0
-            f:close()
-            if size > 1024 then
-                m.tried = -10 -- разрешаем сразу загрузить текстуру на следующем кадре
-                m.downloadError = nil
-                return
-            end
+    local p = tog.mapFile()
+    if p then
+        local ok, tex = pcall(imgui.CreateTextureFromFile, p)
+        if ok and tex ~= nil then
+            m.tex, m.texPath = tex, p
+            return tex
         end
-        m.downloadError = 'Не удалось скачать map.jpg'
-        m.tried = os.clock()
-    end)
-
-    if not ok then
-        m.downloading = false
-        m.downloadError = tostring(err or 'Ошибка запуска загрузки')
-        m.tried = os.clock()
     end
-    return nil
 end
+
 -- true, пока зажата назначенная клавиша (и это уместно: не чат, не диалог, не пауза, не меню)
 function tog.mapHeld()
     local m = tog.map
@@ -2011,14 +1948,16 @@ function tog.drawMap()
         local ok = pcall(function() dl:AddImageRounded(tex, p0, p1, uv0, uv1, col, rr) end)
         if not ok then dl:AddImage(tex, p0, p1, uv0, uv1, col) end
     else
-        -- заглушка: сетка и подсказка, куда положить картинку
+        -- заглушка: сетка и статус загрузки карты с GitHub
         for i = 1, 11 do
             local t = S * i / 12
             dl:AddLine(imgui.ImVec2(x0 + t, y0 + 8 * scale), imgui.ImVec2(x0 + t, y0 + S - 8 * scale), C(1, 1, 1, 0.05), 1)
             dl:AddLine(imgui.ImVec2(x0 + 8 * scale, y0 + t), imgui.ImVec2(x0 + S - 8 * scale, y0 + t), C(1, 1, 1, 0.05), 1)
         end
-        local l1 = 'Нет изображения карты'
-        local l2 = m.downloading and 'Загрузка карты с GitHub...' or (m.downloadError or 'Карта загрузится автоматически с GitHub')
+        local dls = tog.map.dl
+        local l1 = (dls == 'err') and 'Не удалось скачать карту'
+            or ((dls == 'loading' or dls == 'done') and 'Загрузка карты с GitHub...' or 'Нет изображения карты')
+        local l2 = (dls == 'err') and 'Проверьте интернет, повтор через минуту' or 'Подождите несколько секунд'
         local w1, w2 = imgui.CalcTextSize(l1).x, imgui.CalcTextSize(l2).x
         local lhh = imgui.GetTextLineHeight()
         dl:AddText(imgui.ImVec2(x0 + (S - w1) / 2, y0 + S / 2 - lhh - 2 * scale), C(0.92, 0.93, 0.96, 1), l1)
@@ -2255,7 +2194,6 @@ end)
 -- Основной поток
 ------------------------------------------------------------------
 function main()
-    pcall(createDirectory, getWorkingDirectory() .. '\\config')
     while not isSampAvailable() do wait(100) end
 
     sampRegisterChatCommand('wss', function() setOpen(not window[0]) end)
@@ -2264,6 +2202,7 @@ function main()
     if tog.recovered then
         say(('найден незавершённый сеанс (после вылета игры): сохранён в историю, сеансов: %d'):format(tog.recovered))
     end
+    tog.checkUpdate(true) -- тихая проверка обновлений при запуске
 
     while true do
         wait(200)
@@ -2279,9 +2218,6 @@ function onScriptTerminate(scr, quit)
     if scr == thisScript() then
         pcall(tog.finishAll) -- незавершённые сеансы - в историю (выход из игры, перезагрузка скрипта)
         saveStats()
-        -- Устанавливаем заранее скачанный файл при завершении скрипта.
-        -- Новая версия загрузится при следующем запуске WorkStats.
-        pcall(installPendingUpdate)
         if locked then lockPlayerControl(false) end
     end
 end
