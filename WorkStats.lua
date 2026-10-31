@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.22')
+script_version('1.23')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -753,13 +753,21 @@ function tog.updTick()
             end
             if ok then
                 u.st = 'reload'
+                u.reloadAt = os.clock() + 1.5 -- даём закрыться меню и дорисоваться кадру
                 say('обновлено до v' .. tostring(u.remote) .. ', перезагрузка...')
-                thisScript():reload()
+                setOpen(false)
             else
                 u.st = 'err'
             end
         elseif os.clock() - u.t0 > 60 then
             u.st = 'err'
+        end
+    elseif u.st == 'reload' then
+        if u.reloadAt and os.clock() >= u.reloadAt and not window[0] then
+            u.reloadAt = nil
+            -- если запущен ML-AutoReboot, он сам перезагрузит скрипт при смене файла
+            local okF, other = pcall(script.find, 'ML-AutoReboot')
+            if not (okF and other) then thisScript():reload() end
         end
     end
     tog.mapFetch()
