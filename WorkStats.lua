@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.23')
+script_version('1.24')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -595,7 +595,9 @@ function tog.saveActive()
     return true
 end
 
--- при запуске: если остался файл, значит прошлый сеанс оборвался (вылет) - переносим его в историю
+-- при запуске: если остался файл, значит прошлый сеанс оборвался (вылет) - предлагаем
+-- человеку продолжить его или сохранить в историю (см. tog.pendingRecover и tog.resolveRecover)
+tog.pendingRecover = {} -- [id] = { secs, earned, spent, count, ts }
 function tog.recoverActive()
     local f = io.open(tog.activePath, 'r')
     if not f then return end
@@ -606,20 +608,41 @@ function tog.recoverActive()
     for line in f:lines() do
         local id, secs, earned, spent, count = line:match('^(%w+) (%d+) (%d+) (%d+) (%d+)')
         if id and stats[id] then
-            log[#log + 1] = { job = id, ts = ts, secs = tonumber(secs), earned = tonumber(earned),
-                              spent = tonumber(spent), count = tonumber(count) }
+            tog.pendingRecover[id] = { secs = tonumber(secs), earned = tonumber(earned),
+                                       spent = tonumber(spent), count = tonumber(count), ts = ts }
             n = n + 1
         end
     end
     f:close()
     os.remove(tog.activePath)
-    if n > 0 then
-        while #log > 300 do table.remove(log, 1) end
-        saveLog()
-        tog.recovered = n
-    end
+    if n > 0 then tog.recovered = n end
 end
 tog.recoverActive()
+
+-- человек решил: продолжить найденный сеанс (true) или сохранить его в историю (false)
+function tog.resolveRecover(id, continueIt)
+    local r = tog.pendingRecover[id]
+    if not r then return end
+    tog.pendingRecover[id] = nil
+    if continueIt then
+        local s = stats[id]
+        s.sEarned, s.sSecs, s.sCount, s.sSpent = r.earned, r.secs, r.count, r.spent
+        running = id
+        tog.act = os.clock()
+        lastMoney = readMoney()
+        lastTick = os.clock()
+        for i, j in ipairs(JOBS) do
+            if j.id == id then selected = i end
+        end
+    else
+        log[#log + 1] = { job = id, ts = r.ts, secs = math.floor(r.secs), earned = math.floor(r.earned),
+                          spent = math.floor(r.spent), count = r.count }
+        while #log > 300 do table.remove(log, 1) end
+        saveLog()
+    end
+    tog.saveActive()
+    saveStats()
+end
 
 -- завершить все сеансы, где есть данные (кик, обрыв связи, выход из игры, выгрузка скрипта)
 function tog.finishAll(reason)
@@ -1259,13 +1282,39 @@ local function draw()
     if tab == 1 then
         local profit = s.sEarned - s.sSpent
 
+        -- баннер: найден незавершённый сеанс этой работы (после вылета / кика) - продолжить или сохранить в историю
+        local topEff = top
+        local rec = tog.pendingRecover[job.id]
+        if rec then
+            local bnH = math.floor(76 * scale)
+            dl:AddRectFilled(P(mx, top), P(mx + MW, top + bnH), U32(jc[1], jc[2], jc[3], 0.12), 14 * scale)
+            dl:AddRect(P(mx, top), P(mx + MW, top + bnH), U32(jc[1], jc[2], jc[3], 0.35), 14 * scale)
+            local recNet = rec.earned - rec.spent
+            local l1 = icl('hourglass', ('Незавершённый сеанс от %s'):format(rec.ts:gsub('_', ' ')))
+            local l2 = ('%s%s  ·  %s  ·  %s  ·  %d заказов'):format((recNet >= 0) and '+' or '-',
+                fmtMoney(math.abs(recNet)), fmtMoney(rec.earned), fmtTime(rec.secs), rec.count)
+            drawText(dl, P(mx + 16 * scale, top + 10 * scale), U32(0.92, 0.93, 0.96, 1), l1)
+            dl:AddText(P(mx + 16 * scale, top + 10 * scale + lh + 4 * scale), GRAY, l2)
+            local bnBW, bnBH = math.floor(132 * scale), math.floor(32 * scale)
+            local bnBY = top + (bnH - bnBH) / 2
+            imgui.SetCursorPos(imgui.ImVec2(mx + MW - 16 * scale - bnBW * 2 - gap, bnBY))
+            if styledButton('##recCont', icl('play', 'Продолжить'), bnBW, bnBH, true) then
+                tog.resolveRecover(job.id, true)
+            end
+            imgui.SetCursorPos(imgui.ImVec2(mx + MW - 16 * scale - bnBW, bnBY))
+            if styledButton('##recDrop', icl('history', 'В историю'), bnBW, bnBH, false) then
+                tog.resolveRecover(job.id, false)
+            end
+            topEff = top + bnH + gap
+        end
+
         -- главная карточка
         local hh = math.floor(96 * scale)
-        dl:AddRectFilled(P(mx, top), P(mx + MW, top + hh), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.10), 14 * scale)
-        dl:AddRect(P(mx, top), P(mx + MW, top + hh), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.28), 14 * scale)
-        drawText(dl, P(mx + 18 * scale, top + 12 * scale), GRAY, icl('coins', 'Заработано за сеанс'))
+        dl:AddRectFilled(P(mx, topEff), P(mx + MW, topEff + hh), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.10), 14 * scale)
+        dl:AddRect(P(mx, topEff), P(mx + MW, topEff + hh), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.28), 14 * scale)
+        drawText(dl, P(mx + 18 * scale, topEff + 12 * scale), GRAY, icl('coins', 'Заработано за сеанс'))
         if fontBig then imgui.PushFont(fontBig) end
-        dl:AddText(P(mx + 18 * scale, top + 12 * scale + lh + 2 * scale), U32(ACCENT[1], ACCENT[2], ACCENT[3], 1), fmtMoney(s.sEarned))
+        dl:AddText(P(mx + 18 * scale, topEff + 12 * scale + lh + 2 * scale), U32(ACCENT[1], ACCENT[2], ACCENT[3], 1), fmtMoney(s.sEarned))
         if fontBig then imgui.PopFont() end
         -- справа: чистая прибыль
         local pStr = ((profit >= 0) and '+' or '-') .. fmtMoney(math.abs(profit))
@@ -1273,15 +1322,15 @@ local function draw()
         local pc2 = (profit >= 0) and GREEN or RED
         if fontTitle then imgui.PushFont(fontTitle) end
         local pw = imgui.CalcTextSize(pStr).x
-        dl:AddText(P(mx + MW - 18 * scale - pw, top + 12 * scale + lh + 6 * scale), U32(pc2[1], pc2[2], pc2[3], 1), pStr)
+        dl:AddText(P(mx + MW - 18 * scale - pw, topEff + 12 * scale + lh + 6 * scale), U32(pc2[1], pc2[2], pc2[3], 1), pStr)
         if fontTitle then imgui.PopFont() end
         local plw = textWidth(pLbl)
-        drawText(dl, P(mx + MW - 18 * scale - plw, top + 12 * scale), GRAY, pLbl)
+        drawText(dl, P(mx + MW - 18 * scale - plw, topEff + 12 * scale), GRAY, pLbl)
 
         -- три карточки
         local cw = math.floor((MW - gap * 2) / 3)
         local ch = math.floor(66 * scale)
-        local cy = top + hh + gap
+        local cy = topEff + hh + gap
         imgui.SetCursorPos(imgui.ImVec2(mx, cy))
         statCard(icl('clock', 'Время'), fmtTime(s.sSecs), cw, ch)
         imgui.SetCursorPos(imgui.ImVec2(mx + cw + gap, cy))
@@ -2208,7 +2257,7 @@ function main()
     say('загружен. /wss - открыть меню статистики работ')
     if not sampev then say('не найдена библиотека SAMP.Lua - доход такси считаться не будет') end
     if tog.recovered then
-        say(('найден незавершённый сеанс (после вылета игры): сохранён в историю, сеансов: %d'):format(tog.recovered))
+        say(('найден незавершённый сеанс (после вылета игры): %d. /wss - продолжить или сохранить в историю'):format(tog.recovered))
     end
     tog.checkUpdate(true) -- тихая проверка обновлений при запуске
 
