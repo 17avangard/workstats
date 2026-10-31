@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.25')
+script_version('1.25b')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -519,7 +519,7 @@ loadLog()
 local function finishSession(id)
     local st = stats[id]
     if st.sEarned > 0 or st.sSpent > 0 or st.sSecs > 5 then
-        log[#log + 1] = { job = id, ts = os.date('%d.%m_%H:%M'), secs = math.floor(st.sSecs),
+        log[#log + 1] = { job = id, ts = os.date('%d.%m_%H:%M:%S'), secs = math.floor(st.sSecs),
                           earned = math.floor(st.sEarned), spent = math.floor(st.sSpent), count = st.sCount }
         while #log > 300 do table.remove(log, 1) end
         saveLog()
@@ -581,7 +581,7 @@ end
 -- Возвращает true, если файл записан
 function tog.saveActive()
     local lines = {}
-    local nowTs = os.date('%d.%m_%H:%M')
+    local nowTs = os.date('%d.%m_%H:%M:%S')
     for _, j in ipairs(JOBS) do
         local st = stats[j.id]
         if tog.hasData(st) then
@@ -628,7 +628,7 @@ function tog.recoverActive()
     if not f then return end
     local head = f:read('*l') or ''
     local savedAt = tonumber(head:match('^T (%d+)')) or os.time()
-    local headTs = os.date('%d.%m_%H:%M', savedAt)
+    local headTs = os.date('%d.%m_%H:%M:%S', savedAt)
     local n = 0
     for line in f:lines() do
         local id, secs, earned, spent, count, ts = line:match('^(%w+) (%d+) (%d+) (%d+) (%d+) ?(%S*)')
@@ -686,7 +686,7 @@ function tog.suspendAll(reason)
         local st = stats[j.id]
         if tog.hasData(st) then
             tog.stash(j.id, { secs = math.floor(st.sSecs), earned = math.floor(st.sEarned),
-                spent = math.floor(st.sSpent), count = st.sCount, ts = os.date('%d.%m_%H:%M') })
+                spent = math.floor(st.sSpent), count = st.sCount, ts = os.date('%d.%m_%H:%M:%S') })
             resetSession(j.id)
             n, last = n + 1, i
         end
@@ -1338,39 +1338,14 @@ local function draw()
     if tab == 1 then
         local profit = s.sEarned - s.sSpent
 
-        -- баннер: найден незавершённый сеанс этой работы (после выхода / вылета / кика) - продолжить или сохранить в историю
-        local topEff = top
-        local rec = tog.pendingRecover[job.id]
-        if rec then
-            local bnH = math.floor(76 * scale)
-            dl:AddRectFilled(P(mx, top), P(mx + MW, top + bnH), U32(jc[1], jc[2], jc[3], 0.12), 14 * scale)
-            dl:AddRect(P(mx, top), P(mx + MW, top + bnH), U32(jc[1], jc[2], jc[3], 0.35), 14 * scale)
-            local recNet = rec.earned - rec.spent
-            local l1 = icl('hourglass', ('Незавершённый сеанс от %s'):format((rec.ts:gsub('_', ' '))))
-            local l2 = ('%s%s  ·  %s  ·  %s  ·  %d заказов'):format((recNet >= 0) and '+' or '-',
-                fmtMoney(math.abs(recNet)), fmtMoney(rec.earned), fmtTime(rec.secs), rec.count)
-            drawText(dl, P(mx + 16 * scale, top + 10 * scale), U32(0.92, 0.93, 0.96, 1), l1)
-            dl:AddText(P(mx + 16 * scale, top + 10 * scale + lh + 4 * scale), GRAY, l2)
-            local bnBW, bnBH = math.floor(132 * scale), math.floor(32 * scale)
-            local bnBY = top + (bnH - bnBH) / 2
-            imgui.SetCursorPos(imgui.ImVec2(mx + MW - 16 * scale - bnBW * 2 - gap, bnBY))
-            if styledButton('##recCont', icl('play', 'Продолжить'), bnBW, bnBH, true) then
-                tog.resolveRecover(job.id, true)
-            end
-            imgui.SetCursorPos(imgui.ImVec2(mx + MW - 16 * scale - bnBW, bnBY))
-            if styledButton('##recDrop', icl('history', 'В историю'), bnBW, bnBH, false) then
-                tog.resolveRecover(job.id, false)
-            end
-            topEff = top + bnH + gap
-        end
 
         -- главная карточка
         local hh = math.floor(96 * scale)
-        dl:AddRectFilled(P(mx, topEff), P(mx + MW, topEff + hh), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.10), 14 * scale)
-        dl:AddRect(P(mx, topEff), P(mx + MW, topEff + hh), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.28), 14 * scale)
-        drawText(dl, P(mx + 18 * scale, topEff + 12 * scale), GRAY, icl('coins', 'Заработано за сеанс'))
+        dl:AddRectFilled(P(mx, top), P(mx + MW, top + hh), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.10), 14 * scale)
+        dl:AddRect(P(mx, top), P(mx + MW, top + hh), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.28), 14 * scale)
+        drawText(dl, P(mx + 18 * scale, top + 12 * scale), GRAY, icl('coins', 'Заработано за сеанс'))
         if fontBig then imgui.PushFont(fontBig) end
-        dl:AddText(P(mx + 18 * scale, topEff + 12 * scale + lh + 2 * scale), U32(ACCENT[1], ACCENT[2], ACCENT[3], 1), fmtMoney(s.sEarned))
+        dl:AddText(P(mx + 18 * scale, top + 12 * scale + lh + 2 * scale), U32(ACCENT[1], ACCENT[2], ACCENT[3], 1), fmtMoney(s.sEarned))
         if fontBig then imgui.PopFont() end
         -- справа: чистая прибыль
         local pStr = ((profit >= 0) and '+' or '-') .. fmtMoney(math.abs(profit))
@@ -1378,21 +1353,46 @@ local function draw()
         local pc2 = (profit >= 0) and GREEN or RED
         if fontTitle then imgui.PushFont(fontTitle) end
         local pw = imgui.CalcTextSize(pStr).x
-        dl:AddText(P(mx + MW - 18 * scale - pw, topEff + 12 * scale + lh + 6 * scale), U32(pc2[1], pc2[2], pc2[3], 1), pStr)
+        dl:AddText(P(mx + MW - 18 * scale - pw, top + 12 * scale + lh + 6 * scale), U32(pc2[1], pc2[2], pc2[3], 1), pStr)
         if fontTitle then imgui.PopFont() end
         local plw = textWidth(pLbl)
-        drawText(dl, P(mx + MW - 18 * scale - plw, topEff + 12 * scale), GRAY, pLbl)
+        drawText(dl, P(mx + MW - 18 * scale - plw, top + 12 * scale), GRAY, pLbl)
 
         -- три карточки
         local cw = math.floor((MW - gap * 2) / 3)
         local ch = math.floor(66 * scale)
-        local cy = topEff + hh + gap
+        local cy = top + hh + gap
         imgui.SetCursorPos(imgui.ImVec2(mx, cy))
         statCard(icl('clock', 'Время'), fmtTime(s.sSecs), cw, ch)
         imgui.SetCursorPos(imgui.ImVec2(mx + cw + gap, cy))
         statCard(icl('check', 'Заказов'), tostring(s.sCount), cw, ch)
         imgui.SetCursorPos(imgui.ImVec2(mx + (cw + gap) * 2, cy))
         statCard(icl('wallet', 'Потрачено'), fmtMoney(s.sSpent), cw, ch)
+
+        -- незавершённый сеанс (после выхода / вылета / кика): продолжить или сохранить в историю
+        local rec = tog.pendingRecover[job.id]
+        if rec then
+            local bnPad = math.floor(14 * scale)
+            local bnBH = math.floor(32 * scale)
+            local bnY = cy + ch + gap
+            local bnH = bnPad + lh + 4 * scale + lh + 10 * scale + bnBH + bnPad
+            dl:AddRectFilled(P(mx, bnY), P(mx + MW, bnY + bnH), U32(jc[1], jc[2], jc[3], 0.12), 14 * scale)
+            dl:AddRect(P(mx, bnY), P(mx + MW, bnY + bnH), U32(jc[1], jc[2], jc[3], 0.35), 14 * scale)
+            local l1 = icl('hourglass', 'Незавершённый сеанс от ' .. (rec.ts:gsub('_', ' ')))
+            local l2 = ('Заработано %s  ·  %s  ·  %d заказов'):format(fmtMoney(rec.earned), fmtTime(rec.secs), rec.count)
+            drawText(dl, P(mx + bnPad, bnY + bnPad), U32(0.92, 0.93, 0.96, 1), fitText(l1, MW - bnPad * 2))
+            dl:AddText(P(mx + bnPad, bnY + bnPad + lh + 4 * scale), GRAY, fitText(l2, MW - bnPad * 2))
+            local bnBW = math.floor((MW - bnPad * 2 - gap) / 2)
+            local bnBY = bnY + bnH - bnPad - bnBH
+            imgui.SetCursorPos(imgui.ImVec2(mx + bnPad, bnBY))
+            if styledButton('##recCont', icl('play', 'Продолжить'), bnBW, bnBH, true) then
+                tog.resolveRecover(job.id, true)
+            end
+            imgui.SetCursorPos(imgui.ImVec2(mx + bnPad + bnBW + gap, bnBY))
+            if styledButton('##recDrop', icl('history', 'В историю'), bnBW, bnBH, false) then
+                tog.resolveRecover(job.id, false)
+            end
+        end
 
 
         imgui.SetCursorPos(imgui.ImVec2(mx, by))
@@ -1421,7 +1421,7 @@ local function draw()
         local listH = by2 - gap - top
         local rowH = math.floor(lh + 14 * scale)
         local colPad = 14 * scale
-        local weights = { 1.3, 1.0, 1.0, 1.5, 1.5, 1.5 }
+        local weights = { 1.85, 1.0, 1.0, 1.4, 1.4, 1.4 }
         local alignR  = { false, false, true, true, true, true }
         local wsum = 0
         for _, w in ipairs(weights) do wsum = wsum + w end
