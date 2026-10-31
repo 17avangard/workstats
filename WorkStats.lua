@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.20')
+script_version('1.21')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
