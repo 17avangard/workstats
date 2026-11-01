@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.28')
+script_version('1.29')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -1016,7 +1016,7 @@ function tog.updTick()
                 u.st, u.remote = 'avail', v
                 if u.silent then say(tog.L('msg_upd_avail', v)) end
             else
-                u.st, u.remote = 'latest', v
+                u.st = 'latest'
             end
         elseif os.clock() - u.t0 > 15 then
             u.st = 'err'
@@ -1631,7 +1631,7 @@ local function draw()
         if up.st == 'checking' then lbl = L('upd_checking')
         elseif up.st == 'avail' then lbl = icl('download', L('upd_avail', tostring(up.remote)))
         elseif up.st == 'loading' or up.st == 'reload' then lbl = L('upd_loading')
-        elseif up.st == 'latest' then lbl = L('upd_latest', thisScript().version) .. ' (GitHub: ' .. tostring(up.remote) .. ')'
+        elseif up.st == 'latest' then lbl = L('upd_latest', thisScript().version)
         elseif up.st == 'err' then lbl = L('upd_err')
         else lbl = icl('sync', L('upd_check')) end
         local ubw = math.floor(textWidth(lbl) + 32 * scale)
