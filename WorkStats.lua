@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.27')
+script_version('0.1')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -45,6 +45,7 @@ local ICONS = {
     map = 0xF279,        -- map (быстрая карта)
     sync = 0xF021,       -- arrows-rotate (проверка обновлений)
     download = 0xF019,   -- download (скачать обновление)
+    globe = 0xF0AC,      -- earth-americas (язык)
 }
 local ICON_FALLBACK = { close = 'x', winclose = 'x', plus = '+', trash = 'x', gear = '*', back = '<' }
 local iconsOk = false
@@ -255,6 +256,36 @@ end
 tog.loadMini()
 tog.t3 = tog.miShow and 1 or 0
 
+-- autofind: раз в 2 секунды повторяет /find ID (ID берётся из последнего /find или /af ID)
+tog.af = { on = false, id = nil, last = 0, t = 0, lastT = os.clock() }
+tog.afPath = getWorkingDirectory() .. '\\config\\work_stats_af.cfg'
+function tog.saveAf()
+    pcall(createDirectory, getWorkingDirectory() .. '\\config')
+    local f = io.open(tog.afPath, 'w')
+    if not f then return end
+    f:write((tog.af.on and '1' or '0') .. '\n' .. tostring(tog.af.id or '') .. '\n')
+    f:close()
+end
+function tog.loadAf()
+    local f = io.open(tog.afPath, 'r')
+    if not f then return end
+    local on, id = f:read('*l'), tonumber(f:read('*l') or '')
+    f:close()
+    tog.af.on = (on == '1')
+    tog.af.id = id
+end
+tog.loadAf()
+tog.af.t = tog.af.on and 1 or 0
+function tog.afTick()
+    local a = tog.af
+    if not a.on or not a.id then return end
+    if not isSampAvailable() or sampGetGamestate() ~= 3 then return end
+    local now = os.clock()
+    if now - a.last < 2 then return end
+    a.last = now
+    sampSendChat('/find ' .. a.id)
+end
+
 -- быстрая карта: показывается, пока зажата выбранная клавиша
 tog.map = { on = false, key = 0, binding = false, a = 0, last = os.clock(), tried = -10, tex = nil, texPath = nil }
 tog.mapPath = getWorkingDirectory() .. '\\config\\work_stats_map.cfg'
@@ -291,6 +322,187 @@ function tog.keyName(vk)
     if vk >= 0x70 and vk <= 0x87 then return 'F' .. (vk - 0x6F) end
     return ('0x%02X'):format(vk)
 end
+
+------------------------------------------------------------------
+-- Локализация: ru / en / uk (выбор в настройках, хранится в work_stats_lang.cfg)
+------------------------------------------------------------------
+tog.LANGS = { 'ru', 'en', 'uk' }
+tog.LANG_NAME = { ru = 'Русский', en = 'English', uk = 'Українська' }
+tog.lang = 'ru'
+tog.langPath = getWorkingDirectory() .. '\\config\\work_stats_lang.cfg'
+
+tog.TR = {
+    ru = {
+        job_taxi = 'Таксист', job_oil = 'Нефтевышка', job_collect = 'Инкассатор',
+        theme1 = 'Небо', theme2 = 'Фиалка', theme3 = 'Изумруд', theme4 = 'Океан',
+        theme5 = 'Закат', theme6 = 'Сакура', theme7 = 'Золото', theme8 = 'AMOLED',
+        sub_title = 'Статистика работ', jobs_hdr = 'РАБОТЫ',
+        del_tip = 'Удалить работу', del_tip2 = 'Нажмите ещё раз - удалить работу и её историю',
+        player = 'Игрок', settings = 'Настройки',
+        upd_checking = 'Проверка...', upd_avail = 'Обновить до v%s', upd_loading = 'Скачивание...',
+        upd_latest = 'Версия актуальна (v%s)', upd_err = 'Ошибка. Повторить', upd_check = 'Проверить обновления',
+        tab_session = 'Сеанс', tab_history = 'История',
+        chip_run = 'Сеанс идёт', chip_pause = 'На паузе',
+        earned_session = 'Заработано за сеанс', net_profit = 'Чистая прибыль',
+        time = 'Время', orders = 'Заказов', spent = 'Потрачено',
+        rec_title = 'Незавершённый сеанс от %s', rec_line = 'Заработано %s  ·  %s  ·  заказов: %d',
+        btn_continue = 'Продолжить', btn_to_history = 'В историю', btn_stop = 'Остановить',
+        btn_start = 'Начать сеанс', btn_finish = 'Завершить сеанс',
+        h_date = 'Дата', h_time = 'Время', h_orders = 'Заказов', h_income = 'Доход', h_expense = 'Расход', h_total = 'Итог',
+        hist_empty = 'История пуста. Нажмите "Завершить сеанс", и он появится здесь.',
+        clear_confirm = 'Нажмите ещё раз для подтверждения', clear_btn = 'Очистить историю и итоги',
+        alltime = 'За всё время: +%s  /  -%s  ·  итог %s%s  ·  %s  ·  выплат: %d',
+        set_general = 'Функции',
+        set_dist = 'Расстояние до метки', set_dist_sub = 'Показывать при наличии метки. Двигайте плашку мышью',
+        set_pause = 'Автопауза', set_pause_sub = 'Пауза, если долго нет выплат',
+        set_mini = 'Мини-окно', set_mini_sub = 'Доход и время сеанса поверх игры. Двигайте мышью',
+        set_af = 'Autofind', set_af_sub = 'Повторять /find %d раз в 2 секунды', set_af_noid = 'Сначала введите /find ID или /af ID',
+        set_map = 'Быстрая карта', map_sub_none = 'Назначьте клавишу справа', map_sub = 'Видна, пока зажата клавиша',
+        key_press = 'Нажмите...', key_none = 'Не задана',
+        key_tip = 'Нажмите, затем клавишу или кнопку мыши. Esc - отмена, Backspace - сбросить',
+        set_lang = 'Язык', set_lang_sub = 'Язык интерфейса и сообщений',
+        set_look = 'Оформление', set_theme = 'Тема оформления', set_theme_sub = 'Цветовая схема интерфейса', set_custom = 'Кастомизация',
+        footer_bal = 'Баланс: %s  ·  Esc - закрыть', footer_nobal = 'Баланс не читается  ·  Esc - закрыть',
+        unit_m = 'м', map_title = 'Карта', map_dist = '%s м до метки',
+        map_err1 = 'Не удалось скачать карту', map_err2 = 'Проверьте интернет, повтор через минуту',
+        map_load1 = 'Загрузка карты с GitHub...', map_load2 = 'Подождите несколько секунд',
+        map_none = 'Нет изображения карты',
+        msg_loaded = 'загружен. /wss - открыть меню статистики работ',
+        msg_nosamp = 'не найдена библиотека SAMP.Lua - доход такси считаться не будет',
+        msg_recovered = 'найден незавершённый сеанс (выход, вылет или кик). /wss - продолжить или сохранить в историю',
+        msg_conn_lost = 'соединение потеряно - сеанс помечен незавершённым',
+        msg_pending = 'есть незавершённый сеанс. /wss - продолжить или сохранить в историю',
+        msg_autopause = 'автопауза: нет выплат %d мин. Время простоя вычтено',
+        msg_upd_avail = 'доступно обновление v%s: /wss - Настройки',
+        msg_upd_done = 'обновлено до v%s, перезагрузка...',
+    },
+    en = {
+        job_taxi = 'Taxi driver', job_oil = 'Oil rig', job_collect = 'Collector',
+        theme1 = 'Sky', theme2 = 'Violet', theme3 = 'Emerald', theme4 = 'Ocean',
+        theme5 = 'Sunset', theme6 = 'Sakura', theme7 = 'Gold', theme8 = 'AMOLED',
+        sub_title = 'Work statistics', jobs_hdr = 'JOBS',
+        del_tip = 'Delete job', del_tip2 = 'Click again - delete the job and its history',
+        player = 'Player', settings = 'Settings',
+        upd_checking = 'Checking...', upd_avail = 'Update to v%s', upd_loading = 'Downloading...',
+        upd_latest = 'Up to date (v%s)', upd_err = 'Error. Retry', upd_check = 'Check for updates',
+        tab_session = 'Session', tab_history = 'History',
+        chip_run = 'Session active', chip_pause = 'Paused',
+        earned_session = 'Earned this session', net_profit = 'Net profit',
+        time = 'Time', orders = 'Orders', spent = 'Spent',
+        rec_title = 'Unfinished session from %s', rec_line = 'Earned %s  ·  %s  ·  orders: %d',
+        btn_continue = 'Continue', btn_to_history = 'To history', btn_stop = 'Stop',
+        btn_start = 'Start session', btn_finish = 'Finish session',
+        h_date = 'Date', h_time = 'Time', h_orders = 'Orders', h_income = 'Income', h_expense = 'Expenses', h_total = 'Total',
+        hist_empty = 'History is empty. Press "Finish session" and it will appear here.',
+        clear_confirm = 'Click again to confirm', clear_btn = 'Clear history and totals',
+        alltime = 'All time: +%s  /  -%s  ·  total %s%s  ·  %s  ·  payouts: %d',
+        set_general = 'General settings',
+        set_dist = 'Distance to marker', set_dist_sub = 'Shown when a marker exists. Drag the badge with the mouse',
+        set_pause = 'Auto-pause', set_pause_sub = 'Pause if there are no payouts for a long time',
+        set_mini = 'Mini window', set_mini_sub = 'Session income and time over the game. Drag with the mouse',
+        set_af = 'Autofind', set_af_sub = 'Repeat /find %d every 2 seconds', set_af_noid = 'First type /find ID or /af ID',
+        set_map = 'Quick map', map_sub_none = 'Assign a key on the right', map_sub = 'Visible while the key is held',
+        key_press = 'Press...', key_none = 'Not set',
+        key_tip = 'Click, then press a key or mouse button. Esc - cancel, Backspace - clear',
+        set_lang = 'Language', set_lang_sub = 'Interface and message language',
+        set_look = 'Appearance', set_theme = 'Theme', set_theme_sub = 'Interface color scheme', set_custom = 'Customization',
+        footer_bal = 'Balance: %s  ·  Esc - close', footer_nobal = 'Balance unavailable  ·  Esc - close',
+        unit_m = 'm', map_title = 'Map', map_dist = '%s m to marker',
+        map_err1 = 'Failed to download the map', map_err2 = 'Check your connection, retry in a minute',
+        map_load1 = 'Loading map from GitHub...', map_load2 = 'Please wait a few seconds',
+        map_none = 'No map image',
+        msg_loaded = 'loaded. /wss - open the work statistics menu',
+        msg_nosamp = 'SAMP.Lua library not found - taxi income will not be counted',
+        msg_recovered = 'found an unfinished session (quit, crash or kick). /wss - continue or save to history',
+        msg_conn_lost = 'connection lost - session marked as unfinished',
+        msg_pending = 'you have an unfinished session. /wss - continue or save to history',
+        msg_autopause = 'auto-pause: no payouts for %d min. Idle time subtracted',
+        msg_upd_avail = 'update v%s available: /wss - Settings',
+        msg_upd_done = 'updated to v%s, reloading...',
+    },
+    uk = {
+        job_taxi = 'Таксист', job_oil = 'Нафтова вишка', job_collect = 'Інкасатор',
+        theme1 = 'Небо', theme2 = 'Фіалка', theme3 = 'Смарагд', theme4 = 'Океан',
+        theme5 = 'Захід', theme6 = 'Сакура', theme7 = 'Золото', theme8 = 'AMOLED',
+        sub_title = 'Статистика робіт', jobs_hdr = 'РОБОТИ',
+        del_tip = 'Видалити роботу', del_tip2 = 'Натисніть ще раз - видалити роботу та її історію',
+        player = 'Гравець', settings = 'Налаштування',
+        upd_checking = 'Перевірка...', upd_avail = 'Оновити до v%s', upd_loading = 'Завантаження...',
+        upd_latest = 'Версія актуальна (v%s)', upd_err = 'Помилка. Повторити', upd_check = 'Перевірити оновлення',
+        tab_session = 'Сеанс', tab_history = 'Історія',
+        chip_run = 'Сеанс триває', chip_pause = 'На паузі',
+        earned_session = 'Зароблено за сеанс', net_profit = 'Чистий прибуток',
+        time = 'Час', orders = 'Замовлень', spent = 'Витрачено',
+        rec_title = 'Незавершений сеанс від %s', rec_line = 'Зароблено %s  ·  %s  ·  замовлень: %d',
+        btn_continue = 'Продовжити', btn_to_history = 'В історію', btn_stop = 'Зупинити',
+        btn_start = 'Почати сеанс', btn_finish = 'Завершити сеанс',
+        h_date = 'Дата', h_time = 'Час', h_orders = 'Замовлень', h_income = 'Дохід', h_expense = 'Витрати', h_total = 'Підсумок',
+        hist_empty = "Історія порожня. Натисніть «Завершити сеанс», і він з'явиться тут.",
+        clear_confirm = 'Натисніть ще раз для підтвердження', clear_btn = 'Очистити історію та підсумки',
+        alltime = 'За весь час: +%s  /  -%s  ·  підсумок %s%s  ·  %s  ·  виплат: %d',
+        set_general = 'Загальні налаштування',
+        set_dist = 'Відстань до мітки', set_dist_sub = 'Показувати за наявності мітки. Рухайте плашку мишею',
+        set_pause = 'Автопауза', set_pause_sub = 'Пауза, якщо довго немає виплат',
+        set_mini = 'Міні-вікно', set_mini_sub = 'Дохід і час сеансу поверх гри. Рухайте мишею',
+        set_af = 'Autofind', set_af_sub = 'Повторювати /find %d кожні 2 секунди', set_af_noid = 'Спершу введіть /find ID або /af ID',
+        set_map = 'Швидка карта', map_sub_none = 'Призначте клавішу праворуч', map_sub = 'Видно, поки затиснута клавіша',
+        key_press = 'Натисніть...', key_none = 'Не задано',
+        key_tip = 'Натисніть, потім клавішу або кнопку миші. Esc - скасувати, Backspace - скинути',
+        set_lang = 'Мова', set_lang_sub = 'Мова інтерфейсу та повідомлень',
+        set_look = 'Оформлення', set_theme = 'Тема оформлення', set_theme_sub = 'Кольорова схема інтерфейсу', set_custom = 'Кастомізація',
+        footer_bal = 'Баланс: %s  ·  Esc - закрити', footer_nobal = 'Баланс не читається  ·  Esc - закрити',
+        unit_m = 'м', map_title = 'Карта', map_dist = '%s м до мітки',
+        map_err1 = 'Не вдалося завантажити карту', map_err2 = 'Перевірте інтернет, повтор через хвилину',
+        map_load1 = 'Завантаження карти з GitHub...', map_load2 = 'Зачекайте кілька секунд',
+        map_none = 'Немає зображення карти',
+        msg_loaded = 'завантажено. /wss - відкрити меню статистики робіт',
+        msg_nosamp = 'не знайдено бібліотеку SAMP.Lua - дохід таксі не рахуватиметься',
+        msg_recovered = 'знайдено незавершений сеанс (вихід, виліт або кік). /wss - продовжити або зберегти в історію',
+        msg_conn_lost = "з'єднання втрачено - сеанс позначено незавершеним",
+        msg_pending = 'є незавершений сеанс. /wss - продовжити або зберегти в історію',
+        msg_autopause = 'автопауза: немає виплат %d хв. Час простою віднято',
+        msg_upd_avail = 'доступне оновлення v%s: /wss - Налаштування',
+        msg_upd_done = 'оновлено до v%s, перезавантаження...',
+    },
+}
+
+-- перевод по ключу; при нехватке строки берётся русский вариант
+function tog.L(key, ...)
+    local t = tog.TR[tog.lang]
+    local s = (t and t[key]) or tog.TR.ru[key] or key
+    if select('#', ...) > 0 then return s:format(...) end
+    return s
+end
+
+-- название работы: встроенные переводятся, пользовательские остаются как введены
+function tog.jobName(j)
+    if j.builtin then return tog.L('job_' .. j.id) end
+    return j.name
+end
+
+function tog.saveLang()
+    pcall(createDirectory, getWorkingDirectory() .. '\\config')
+    local f = io.open(tog.langPath, 'w')
+    if not f then return end
+    f:write(tog.lang .. '\n')
+    f:close()
+end
+
+function tog.setLang(code)
+    if tog.TR[code] and tog.lang ~= code then
+        tog.lang = code
+        tog.saveLang()
+    end
+end
+
+function tog.loadLang()
+    local f = io.open(tog.langPath, 'r')
+    if not f then return end
+    local code = (f:read('*l') or ''):match('^%s*(%a+)')
+    f:close()
+    if code and tog.TR[code] then tog.lang = code end
+end
+tog.loadLang()
 
 local JOBS = {
     { id = 'taxi',    name = 'Таксист', builtin = true },
@@ -367,7 +579,7 @@ local lastTick = os.clock()
 local lastSave = os.clock()
 local balance = nil
 local me = { nick = '', id = -1 }
-local tab = 1             -- 1 = сеанс, 2 = история
+local tab = 1             -- 1 = сеанс, 2 = история, 4 = настройки, 5 = организация
 local log = {}            -- завершённые сеансы
 local confirmClear = 0
 local hs = { job = nil, target = 0, cur = 0, set = 0, last = os.clock() } -- плавная прокрутка истории
@@ -438,7 +650,7 @@ end
 
 -- значок работы: первая буква названия капсом
 local function jobGlyph(j)
-    return firstChar(j.name)
+    return firstChar(tog.jobName(j))
 end
 
 local function readMoney()
@@ -475,7 +687,7 @@ loadStats()
 
 local function setOpen(v)
     window[0] = v and true or false
-    if not v then tog.themeOpen = false; tog.map.binding = false end
+    if not v then tog.themeOpen = false; tog.langOpen = false; tog.map.binding = false end
     if v and not locked then
         lockPlayerControl(true)
         locked = true
@@ -802,7 +1014,7 @@ function tog.updTick()
                 u.st = 'err'
             elseif tog.isNewer(v, thisScript().version) then
                 u.st, u.remote = 'avail', v
-                if u.silent then say('доступно обновление v' .. v .. ': /wss - Настройки') end
+                if u.silent then say(tog.L('msg_upd_avail', v)) end
             else
                 u.st = 'latest'
             end
@@ -821,7 +1033,7 @@ function tog.updTick()
             if ok then
                 u.st = 'reload'
                 u.reloadAt = os.clock() + 1.5 -- даём закрыться меню и дорисоваться кадру
-                say('обновлено до v' .. tostring(u.remote) .. ', перезагрузка...')
+                say(tog.L('msg_upd_done', tostring(u.remote)))
                 setOpen(false)
             else
                 u.st = 'err'
@@ -868,6 +1080,7 @@ local function tick()
     lastTick = now
 
     tog.updTick() -- обновления и автозагрузка карты
+    tog.afTick()
 
     local m = readMoney()
     balance = m
@@ -904,7 +1117,7 @@ local function tick()
     if isSampAvailable() and sampGetGamestate() ~= 3 then
         tog.offSince = tog.offSince or now
         if now - tog.offSince > 3 then
-            tog.suspendAll('соединение потеряно - сеанс помечен незавершённым')
+            tog.suspendAll(tog.L('msg_conn_lost'))
             tog.icons = {}
         end
     else
@@ -912,7 +1125,7 @@ local function tick()
         -- соединение вернулось: напоминаем, что есть сеанс, который можно продолжить
         if tog.notify and next(tog.pendingRecover) then
             tog.notify = false
-            say('есть незавершённый сеанс. /wss - продолжить или сохранить в историю')
+            say(tog.L('msg_pending'))
         end
     end
 
@@ -923,7 +1136,7 @@ local function tick()
         s.secs = math.max(0, s.secs - tog.pauseSec)
         running = nil
         saveStats()
-        say(('автопауза: нет выплат %d мин. Время простоя вычтено'):format(tog.pauseSec / 60))
+        say(tog.L('msg_autopause', tog.pauseSec / 60))
     end
 
     -- автосохранение незавершённых сеансов (на случай вылета игры)
@@ -1020,12 +1233,143 @@ local function checkIcons()
     if not ok then iconReport = 'не удалось проверить иконки' end
 end
 
+------------------------------------------------------------------
+-- Выпадающие списки (язык, тема). Список - отдельное окно поверх меню: клики не
+-- проваливаются на элементы под ним, он не выходит за границы основного окна,
+-- а длинный список плавно прокручивается колесом мыши.
+------------------------------------------------------------------
+tog.dd, tog.ddIn, tog.ddReq = {}, {}, {}
+
+function tog.ddRender()
+    local reqs = tog.ddReq
+    tog.ddReq = {}
+    for _, d in ipairs(reqs) do
+        local st = tog.dd[d.id]
+        if not st then
+            st = { target = 0, cur = 0, last = os.clock(), was = false }
+            tog.dd[d.id] = st
+        end
+        local a = d.alpha
+        if a <= 0.01 then
+            st.was = false
+            tog.ddIn[d.id] = false
+        else
+            local ipad, ih, ig = 6 * scale, 28 * scale, 2 * scale
+            local n = #d.items
+            local contentH = n * ih + (n - 1) * ig
+            local desired = math.min(contentH + ipad * 2, d.maxRows * (ih + ig) - ig + ipad * 2)
+            local below, above = d.bound - d.y, d.yUp - d.top
+            local up = below < desired and above > below
+            local maxH = math.max(math.min(desired, up and above or below), ih + ipad * 2)
+            local py = up and (d.yUp - maxH) or d.y
+            local innerH = maxH - ipad * 2
+            local maxScroll = math.max(0, contentH - innerH)
+            -- при открытии выбранный пункт сразу оказывается в видимой части
+            if d.open and not st.was then
+                local si = 1
+                for i, it in ipairs(d.items) do
+                    if it.sel then si = i end
+                end
+                st.target = math.max(0, math.min(maxScroll, (si - 1) * (ih + ig) - (innerH - ih) / 2))
+                st.cur = st.target
+            end
+            st.was = d.open
+            local now = os.clock()
+            local dt = math.min(0.05, now - st.last)
+            st.last = now
+
+            imgui.PushStyleVarFloat(imgui.StyleVar.WindowRounding, 12 * scale)
+            imgui.PushStyleVarVec2(imgui.StyleVar.WindowPadding, imgui.ImVec2(0, 0))
+            imgui.PushStyleColor(imgui.Col.WindowBg, V4(0, 0, 0, 0))
+            imgui.PushStyleColor(imgui.Col.Border, V4(0, 0, 0, 0))
+            imgui.SetNextWindowPos(imgui.ImVec2(d.x, py + (1 - a) * (up and 8 or -8) * scale), imgui.Cond.Always)
+            imgui.SetNextWindowSize(imgui.ImVec2(d.w, maxH), imgui.Cond.Always)
+            local flags = imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse
+                + imgui.WindowFlags.NoSavedSettings + imgui.WindowFlags.NoScrollbar
+                + imgui.WindowFlags.NoScrollWithMouse + imgui.WindowFlags.NoMove
+            if not d.open then flags = flags + imgui.WindowFlags.NoInputs end
+            imgui.Begin('###WSdd' .. d.id, nil, flags)
+
+            local wp = imgui.GetWindowPos()
+            local pdl = imgui.GetWindowDrawList()
+            local lh = imgui.GetTextLineHeight()
+            local hovWin = imgui.IsWindowHovered()
+            local w0 = imgui.ImVec2(wp.x, wp.y)
+            local w1 = imgui.ImVec2(wp.x + d.w, wp.y + maxH)
+            local rad = 12 * scale
+            pdl:AddRectFilled(w0, w1, U32(math.min(1, BG[1] + 0.035), math.min(1, BG[2] + 0.035), math.min(1, BG[3] + 0.04), 0.99 * a), rad)
+            pdl:AddRect(imgui.ImVec2(wp.x + 0.5, wp.y + 0.5), imgui.ImVec2(w1.x - 0.5, w1.y - 0.5),
+                U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.35 * a), rad, 15, 1)
+
+            -- плавная прокрутка колесом мыши
+            if hovWin and d.open and maxScroll > 0 then
+                local wheel = imgui.GetIO().MouseWheel
+                if wheel ~= 0 then st.target = st.target - wheel * (ih + ig) * 1.5 end
+            end
+            st.target = math.max(0, math.min(maxScroll, st.target))
+            st.cur = st.cur + (st.target - st.cur) * (1 - math.exp(-dt * 14))
+            if math.abs(st.target - st.cur) < 0.3 then st.cur = st.target end
+
+            local c0 = imgui.ImVec2(wp.x, wp.y + ipad)
+            local c1 = imgui.ImVec2(wp.x + d.w, wp.y + maxH - ipad)
+            imgui.PushClipRect(c0, c1, true)
+            local right = wp.x + d.w - ipad - ((maxScroll > 0) and 6 * scale or 0)
+            local picked
+            for i, it in ipairs(d.items) do
+                local iy = wp.y + ipad + (i - 1) * (ih + ig) - st.cur
+                if iy + ih > c0.y and iy < c1.y then
+                    local q0, q1 = imgui.ImVec2(wp.x + ipad, iy), imgui.ImVec2(right, iy + ih)
+                    local hov = d.open and hovWin and imgui.IsMouseHoveringRect(q0, q1)
+                    local hA = animTo('ddh' .. d.id .. i, hov and 1 or 0, 14)
+                    local sA = animTo('dds' .. d.id .. i, it.sel and 1 or 0, 12)
+                    local ac = it.accent or ACCENT
+                    pdl:AddRectFilled(q0, q1, U32(1, 1, 1, 0.07 * hA * (1 - sA) * a), 8 * scale)
+                    if sA > 0.01 then pdl:AddRectFilled(q0, q1, U32(ac[1], ac[2], ac[3], 0.16 * sA * a), 8 * scale) end
+                    local tx = q0.x + 12 * scale
+                    if it.dots then
+                        for k, c in ipairs(it.dots) do
+                            pdl:AddCircleFilled(imgui.ImVec2(q0.x + 16 * scale + (k - 1) * 12 * scale, iy + ih / 2), 4.5 * scale,
+                                U32(c[1], c[2], c[3], a), 14)
+                        end
+                        tx = q0.x + 16 * scale + 3 * 12 * scale
+                    end
+                    local ty = iy + (ih - lh) / 2
+                    local tr, tg, tb = mixRGB({ 0.82, 0.84, 0.88 }, { 0.96, 0.97, 0.99 }, hA)
+                    pdl:AddText(imgui.ImVec2(tx, ty), U32(lerp(tr, ac[1], sA), lerp(tg, ac[2], sA), lerp(tb, ac[3], sA), a), it.name)
+                    if sA > 0.02 then
+                        drawText(pdl, imgui.ImVec2(q1.x - 24 * scale, ty), U32(ac[1], ac[2], ac[3], sA * a), ic('check'))
+                    end
+                    if hov and a > 0.6 and imgui.IsMouseClicked(0) then picked = i end
+                end
+            end
+            -- ползунок прокрутки
+            if maxScroll > 0 then
+                local barH = math.max(18 * scale, innerH * innerH / contentH)
+                local by0 = wp.y + ipad + (innerH - barH) * (st.cur / maxScroll)
+                pdl:AddRectFilled(imgui.ImVec2(wp.x + d.w - 6 * scale, by0), imgui.ImVec2(wp.x + d.w - 3 * scale, by0 + barH),
+                    U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.45 * a), 2 * scale)
+            end
+            imgui.PopClipRect()
+
+            tog.ddIn[d.id] = imgui.IsMouseHoveringRect(w0, w1, false)
+            imgui.End()
+            imgui.PopStyleColor(2)
+            imgui.PopStyleVar(2)
+            if picked then
+                d.pick(picked)
+                tog[d.okey] = false
+            end
+        end
+    end
+end
+
 local function draw()
     if not iconChecked then checkIcons() end
+    local L = tog.L
     local nowH = os.clock()
     hvDt, hvLast = math.min(0.05, nowH - hvLast), nowH
     local sx, sy = getScreenResolution()
-    local W, H = math.floor(780 * scale), math.floor(560 * scale)
+    local W, H = math.floor(780 * scale), math.floor(620 * scale)
     local SB = math.floor(210 * scale)
     local PAD = math.floor(20 * scale)
 
@@ -1070,11 +1414,11 @@ local function draw()
         dl:AddText(imgui.ImVec2(l0.x + lg + 12 * scale, l0.y - 3 * scale), U32(0.92, 0.93, 0.96, 1), 'WorkStats')
         if fontTitle then imgui.PopFont() end
         dl:AddText(imgui.ImVec2(l0.x + lg + 12 * scale, l0.y + lg - imgui.GetTextLineHeight() + 2 * scale),
-            U32(0.50, 0.52, 0.58, 1), 'Статистика работ')
+            U32(0.50, 0.52, 0.58, 1), L('sub_title'))
 
         -- заголовок секции
         local secY = PAD + lg + 20 * scale
-        drawText(dl, imgui.ImVec2(wps.x + PAD, wps.y + secY), U32(0.45, 0.47, 0.54, 1), icl('briefcase', 'РАБОТЫ'))
+        drawText(dl, imgui.ImVec2(wps.x + PAD, wps.y + secY), U32(0.45, 0.47, 0.54, 1), icl('briefcase', L('jobs_hdr')))
 
         -- список работ
         local rowH = math.floor(32 * scale)
@@ -1098,7 +1442,9 @@ local function draw()
 
             -- строка работы
             imgui.SetCursorScreenPos(sp)
-            if imgui.InvisibleButton('##job' .. i, imgui.ImVec2(SB - 20 * scale, rowH)) then selected = i end
+            if imgui.InvisibleButton('##job' .. i, imgui.ImVec2(SB - 20 * scale, rowH)) then
+                selected = i
+            end
             local hov = imgui.IsItemHovered()
 
             local col = JOB_COLORS[j.id] or ACCENT
@@ -1130,7 +1476,7 @@ local function draw()
                     local r1, g1, b1 = mixRGB({ 0.66, 0.68, 0.75 }, { 0.82, 0.84, 0.88 }, hA)
                     return U32(lerp(r1, 0.94, sA), lerp(g1, 0.95, sA), lerp(b1, 0.98, sA), 1)
                 end)(),
-                fitText(j.name, nameMaxW))
+                fitText(tog.jobName(j), nameMaxW))
             -- индикатор активного сеанса
             if running == j.id then
                 local cx, cy = p2.x - dotOff * scale, sp.y + rowH / 2
@@ -1159,7 +1505,7 @@ local function draw()
                     drawText(dl, imgui.ImVec2(xp.x + (xs - xw) / 2, xp.y + (xs - imgui.GetTextLineHeight()) / 2),
                         U32(ir, ig, ib, dv), xg)
                 end
-                if xh then imgui.SetTooltip(armed and 'Нажмите ещё раз - удалить работу и её историю' or 'Удалить работу') end
+                if xh then imgui.SetTooltip(armed and L('del_tip2') or L('del_tip')) end
                 if xc then
                     if armed then
                         pendingRemove = i
@@ -1187,7 +1533,7 @@ local function draw()
         local avc = imgui.ImVec2(pc0.x + 14 * scale + av, pc0.y + pcH / 2)
         dl:AddCircleFilled(avc, av, U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.2), 24)
         dl:AddCircle(avc, av, U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.6), 24, 1)
-        local nick = (me.nick ~= '') and me.nick or 'Игрок'
+        local nick = (me.nick ~= '') and me.nick or L('player')
         local ini = (iconsOk and ic('user') ~= '') and ic('user') or firstChar(nick)
         drawBadgeGlyph(dl, avc.x, avc.y, U32(ACCENT[1], ACCENT[2], ACCENT[3], 1), ini)
         -- шестерёнка справа в карточке игрока: открывает «Настройки»
@@ -1253,23 +1599,23 @@ local function draw()
     local cb = math.floor(28 * scale)
     if fontTitle then imgui.PushFont(fontTitle) end
     local tlh = imgui.GetTextLineHeight()
-    local tw = imgui.CalcTextSize(job.name).x
+    local tw = imgui.CalcTextSize(tog.jobName(job)).x
     if tab == 4 then
     -- шапка настроек: кнопка «назад» и заголовок
-    dl:AddText(P(mx + cb + 12 * scale, y + (cb - tlh) / 2), U32(0.94, 0.95, 0.98, 1), 'Настройки')
+    dl:AddText(P(mx + cb + 12 * scale, y + (cb - tlh) / 2), U32(0.94, 0.95, 0.98, 1), L('settings'))
     if fontTitle then imgui.PopFont() end
     imgui.SetCursorPos(imgui.ImVec2(mx, y))
-    if styledButton('##back', ic('back'), cb, cb, false) then tab = tog.prevTab or 1; tog.themeOpen = false end
+    if styledButton('##back', ic('back'), cb, cb, false) then tab = tog.prevTab or 1; tog.themeOpen = false; tog.langOpen = false end
     else
     local hb = math.floor(tlh)
     local nx = mx + hb + 10 * scale
-    dl:AddText(P(nx, y), U32(0.94, 0.95, 0.98, 1), job.name)
+    dl:AddText(P(nx, y), U32(0.94, 0.95, 0.98, 1), tog.jobName(job))
     if fontTitle then imgui.PopFont() end
     dl:AddRectFilled(P(mx, y), P(mx + hb, y + hb), U32(jc[1], jc[2], jc[3], 0.9), 9 * scale)
     local hg = jobGlyph(job)
     local hc = P(mx + hb / 2, y + hb / 2)
     drawBadgeGlyph(dl, hc.x, hc.y, U32(0.07, 0.08, 0.10, 1), hg)
-    local chipTxt = isRun and 'Сеанс идёт' or 'На паузе'
+    local chipTxt = isRun and L('chip_run') or L('chip_pause')
     local cc = isRun and GREEN or { 0.60, 0.62, 0.68 }
     local chW = imgui.CalcTextSize(chipTxt).x + 30 * scale
     local chH = lh + 8 * scale
@@ -1282,12 +1628,12 @@ local function draw()
     -- кнопка обновления (только в настройках): проверить / скачать новую версию с GitHub
     if tab == 4 then
         local up, lbl = tog.up, nil
-        if up.st == 'checking' then lbl = 'Проверка...'
-        elseif up.st == 'avail' then lbl = icl('download', 'Обновить до v' .. tostring(up.remote))
-        elseif up.st == 'loading' or up.st == 'reload' then lbl = 'Скачивание...'
-        elseif up.st == 'latest' then lbl = 'Версия актуальна (v' .. thisScript().version .. ')'
-        elseif up.st == 'err' then lbl = 'Ошибка. Повторить'
-        else lbl = icl('sync', 'Проверить обновления') end
+        if up.st == 'checking' then lbl = L('upd_checking')
+        elseif up.st == 'avail' then lbl = icl('download', L('upd_avail', tostring(up.remote)))
+        elseif up.st == 'loading' or up.st == 'reload' then lbl = L('upd_loading')
+        elseif up.st == 'latest' then lbl = L('upd_latest', thisScript().version)
+        elseif up.st == 'err' then lbl = L('upd_err')
+        else lbl = icl('sync', L('upd_check')) end
         local ubw = math.floor(textWidth(lbl) + 32 * scale)
         imgui.SetCursorPos(imgui.ImVec2(W - PAD - cb - 8 * scale - ubw, PAD))
         if styledButton('##upd', lbl, ubw, cb, up.st == 'avail') then
@@ -1304,7 +1650,7 @@ local function draw()
 
     -- вкладки
     local ty = y + tlh + 14 * scale
-    local tabs = { icl('session', 'Сеанс'), icl('history', 'История') }
+    local tabs = { icl('session', L('tab_session')), icl('history', L('tab_history')) }
     if tab ~= 4 then
     local tx = mx
     for i, name in ipairs(tabs) do
@@ -1343,13 +1689,13 @@ local function draw()
         local hh = math.floor(96 * scale)
         dl:AddRectFilled(P(mx, top), P(mx + MW, top + hh), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.10), 14 * scale)
         dl:AddRect(P(mx, top), P(mx + MW, top + hh), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.28), 14 * scale)
-        drawText(dl, P(mx + 18 * scale, top + 12 * scale), GRAY, icl('coins', 'Заработано за сеанс'))
+        drawText(dl, P(mx + 18 * scale, top + 12 * scale), GRAY, icl('coins', L('earned_session')))
         if fontBig then imgui.PushFont(fontBig) end
         dl:AddText(P(mx + 18 * scale, top + 12 * scale + lh + 2 * scale), U32(ACCENT[1], ACCENT[2], ACCENT[3], 1), fmtMoney(s.sEarned))
         if fontBig then imgui.PopFont() end
         -- справа: чистая прибыль
         local pStr = ((profit >= 0) and '+' or '-') .. fmtMoney(math.abs(profit))
-        local pLbl = icl('chart', 'Чистая прибыль')
+        local pLbl = icl('chart', L('net_profit'))
         local pc2 = (profit >= 0) and GREEN or RED
         if fontTitle then imgui.PushFont(fontTitle) end
         local pw = imgui.CalcTextSize(pStr).x
@@ -1363,11 +1709,11 @@ local function draw()
         local ch = math.floor(66 * scale)
         local cy = top + hh + gap
         imgui.SetCursorPos(imgui.ImVec2(mx, cy))
-        statCard(icl('clock', 'Время'), fmtTime(s.sSecs), cw, ch)
+        statCard(icl('clock', L('time')), fmtTime(s.sSecs), cw, ch)
         imgui.SetCursorPos(imgui.ImVec2(mx + cw + gap, cy))
-        statCard(icl('check', 'Заказов'), tostring(s.sCount), cw, ch)
+        statCard(icl('check', L('orders')), tostring(s.sCount), cw, ch)
         imgui.SetCursorPos(imgui.ImVec2(mx + (cw + gap) * 2, cy))
-        statCard(icl('wallet', 'Потрачено'), fmtMoney(s.sSpent), cw, ch)
+        statCard(icl('wallet', L('spent')), fmtMoney(s.sSpent), cw, ch)
 
         -- незавершённый сеанс (после выхода / вылета / кика): продолжить или сохранить в историю
         local rec = tog.pendingRecover[job.id]
@@ -1378,25 +1724,25 @@ local function draw()
             local bnH = bnPad + lh + 4 * scale + lh + 10 * scale + bnBH + bnPad
             dl:AddRectFilled(P(mx, bnY), P(mx + MW, bnY + bnH), U32(jc[1], jc[2], jc[3], 0.12), 14 * scale)
             dl:AddRect(P(mx, bnY), P(mx + MW, bnY + bnH), U32(jc[1], jc[2], jc[3], 0.35), 14 * scale)
-            local l1 = icl('hourglass', 'Незавершённый сеанс от ' .. (rec.ts:gsub('_', ' ')))
-            local l2 = ('Заработано %s  ·  %s  ·  %d заказов'):format(fmtMoney(rec.earned), fmtTime(rec.secs), rec.count)
+            local l1 = icl('hourglass', L('rec_title', (rec.ts:gsub('_', ' '))))
+            local l2 = L('rec_line', fmtMoney(rec.earned), fmtTime(rec.secs), rec.count)
             drawText(dl, P(mx + bnPad, bnY + bnPad), U32(0.92, 0.93, 0.96, 1), fitText(l1, MW - bnPad * 2))
             dl:AddText(P(mx + bnPad, bnY + bnPad + lh + 4 * scale), GRAY, fitText(l2, MW - bnPad * 2))
             local bnBW = math.floor((MW - bnPad * 2 - gap) / 2)
             local bnBY = bnY + bnH - bnPad - bnBH
             imgui.SetCursorPos(imgui.ImVec2(mx + bnPad, bnBY))
-            if styledButton('##recCont', icl('play', 'Продолжить'), bnBW, bnBH, true) then
+            if styledButton('##recCont', icl('play', L('btn_continue')), bnBW, bnBH, true) then
                 tog.resolveRecover(job.id, true)
             end
             imgui.SetCursorPos(imgui.ImVec2(mx + bnPad + bnBW + gap, bnBY))
-            if styledButton('##recDrop', icl('history', 'В историю'), bnBW, bnBH, false) then
+            if styledButton('##recDrop', icl('history', L('btn_to_history')), bnBW, bnBH, false) then
                 tog.resolveRecover(job.id, false)
             end
         end
 
 
         imgui.SetCursorPos(imgui.ImVec2(mx, by))
-        if styledButton('##start', isRun and icl('stop', 'Остановить') or icl('play', 'Начать сеанс'), bw, bh, true) then
+        if styledButton('##start', isRun and icl('stop', L('btn_stop')) or icl('play', L('btn_start')), bw, bh, true) then
             if isRun then
                 running = nil
                 saveStats()
@@ -1408,7 +1754,7 @@ local function draw()
             end
         end
         imgui.SetCursorPos(imgui.ImVec2(mx + bw + gap, by))
-        if styledButton('##finish', icl('report', 'Завершить сеанс'), bw, bh, false) then finishSession(job.id) end
+        if styledButton('##finish', icl('report', L('btn_finish')), bw, bh, false) then finishSession(job.id) end
 
     elseif tab == 2 then
         -- история сеансов выбранной работы
@@ -1436,7 +1782,7 @@ local function draw()
             if alignR[c] then return colL[c] + colW[c] - imgui.CalcTextSize(str).x end
             return colL[c]
         end
-        local heads = { 'Дата', 'Время', 'Заказов', 'Доход', 'Расход', 'Итог' }
+        local heads = { L('h_date'), L('h_time'), L('h_orders'), L('h_income'), L('h_expense'), L('h_total') }
 
         imgui.SetCursorPos(imgui.ImVec2(mx, top))
         imgui.PushStyleColor(imgui.Col.ChildBg, V4(PANEL[1], PANEL[2], PANEL[3], 1))
@@ -1481,7 +1827,7 @@ local function draw()
         local ry = 10 * scale + rowH
         if #items == 0 then
             imgui.SetCursorPos(imgui.ImVec2(16 * scale, ry + 6 * scale))
-            imgui.TextDisabled('История пуста. Нажмите "Завершить сеанс", и он появится здесь.')
+            imgui.TextDisabled(L('hist_empty'))
         else
             for i, e in ipairs(items) do
                 local yy = ry + (i - 1) * rowH
@@ -1516,7 +1862,7 @@ local function draw()
 
         imgui.SetCursorPos(imgui.ImVec2(mx, by2))
         local armed = (os.clock() - confirmClear) < 3
-        if styledButton('##clear', icl('trash', armed and 'Нажмите ещё раз для подтверждения' or 'Очистить историю и итоги'), MW, bh, armed) then
+        if styledButton('##clear', icl('trash', armed and L('clear_confirm') or L('clear_btn')), MW, bh, armed) then
             if armed then
                 clearHistory(job.id)
                 confirmClear = 0
@@ -1527,18 +1873,18 @@ local function draw()
 
         -- итоги за всё время
         local allNet = s.total - s.spent
-        local sumStr = ('За всё время: +%s  /  -%s  ·  итог %s%s  ·  %s  ·  %d выплат'):format(
+        local sumStr = L('alltime'):format(
             fmtMoney(s.total), fmtMoney(s.spent), (allNet >= 0) and '+' or '-', fmtMoney(math.abs(allNet)),
             fmtTime(s.secs), s.count)
         local sw = imgui.CalcTextSize(sumStr).x
         dl:AddText(P(mx + math.max(0, (MW - sw) / 2), by2 + bh + 6 * scale), U32(0.62, 0.64, 0.70, 1), sumStr)
 
-    else
+    elseif tab == 4 then
         -- настройки
-        drawText(dl, P(mx, top), GRAY, icl('gear', 'Общие настройки'))
+        drawText(dl, P(mx, top), GRAY, icl('gear', L('set_general')))
         -- переключатель: плашка расстояния до метки
+        local tgH = math.floor(52 * scale)
         local tgY = top + lh + 8 * scale
-        local tgH = math.floor(56 * scale)
         imgui.SetCursorPos(imgui.ImVec2(mx, tgY))
         if imgui.InvisibleButton('##togdist', imgui.ImVec2(MW, tgH)) then
             showDist = not showDist
@@ -1548,8 +1894,8 @@ local function draw()
         dl:AddRectFilled(P(mx, tgY), P(mx + MW, tgY + tgH), U32(PANEL[1], PANEL[2], PANEL[3], 1), 11 * scale)
         local tgA = animTo('tgrow', tgHov and 1 or 0, 14)
         if tgA > 0.01 then dl:AddRect(P(mx, tgY), P(mx + MW, tgY + tgH), U32(1, 1, 1, 0.10 * tgA), 11 * scale) end
-        drawText(dl, P(mx + 14 * scale, tgY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl('target', 'Расстояние до метки'))
-        dl:AddText(P(mx + 14 * scale, tgY + tgH - lh - 9 * scale), GRAY, 'Показывать при наличии метки. Двигайте плашку мышью')
+        drawText(dl, P(mx + 14 * scale, tgY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl('target', L('set_dist')))
+        dl:AddText(P(mx + 14 * scale, tgY + tgH - lh - 9 * scale), GRAY, L('set_dist_sub'))
         local swW, swH = 40 * scale, 22 * scale
         local swX, swY = mx + MW - 14 * scale - swW, tgY + (tgH - swH) / 2
 
@@ -1589,8 +1935,8 @@ local function draw()
         dl:AddRectFilled(P(mx, apY), P(mx + MW, apY + tgH), U32(PANEL[1], PANEL[2], PANEL[3], 1), 11 * scale)
         local apA = animTo('aprow', apHov and 1 or 0, 14)
         if apA > 0.01 then dl:AddRect(P(mx, apY), P(mx + MW, apY + tgH), U32(1, 1, 1, 0.10 * apA), 11 * scale) end
-        drawText(dl, P(mx + 14 * scale, apY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl('hourglass', 'Автопауза'))
-        dl:AddText(P(mx + 14 * scale, apY + tgH - lh - 9 * scale), GRAY, 'Пауза, если долго нет выплат')
+        drawText(dl, P(mx + 14 * scale, apY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl('hourglass', L('set_pause')))
+        dl:AddText(P(mx + 14 * scale, apY + tgH - lh - 9 * scale), GRAY, L('set_pause_sub'))
         local aswX, aswY = mx + MW - 14 * scale - swW, apY + (tgH - swH) / 2
         local nowA = os.clock()
         local adt2 = math.min(0.05, nowA - tog.last2)
@@ -1623,8 +1969,8 @@ local function draw()
             dl:AddRectFilled(P(mx, miRowY), P(mx + MW, miRowY + tgH), U32(PANEL[1], PANEL[2], PANEL[3], 1), 11 * scale)
             local miA = animTo('mirow', miHov and 1 or 0, 14)
             if miA > 0.01 then dl:AddRect(P(mx, miRowY), P(mx + MW, miRowY + tgH), U32(1, 1, 1, 0.10 * miA), 11 * scale) end
-            drawText(dl, P(mx + 14 * scale, miRowY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl('chart', 'Мини-окно'))
-            dl:AddText(P(mx + 14 * scale, miRowY + tgH - lh - 9 * scale), GRAY, 'Доход и время сеанса поверх игры. Двигайте мышью')
+            drawText(dl, P(mx + 14 * scale, miRowY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl('chart', L('set_mini')))
+            dl:AddText(P(mx + 14 * scale, miRowY + tgH - lh - 9 * scale), GRAY, L('set_mini_sub'))
             local mswX, mswY = mx + MW - 14 * scale - swW, miRowY + (tgH - swH) / 2
             local nowM = os.clock()
             local adt3 = math.min(0.05, nowM - tog.last3)
@@ -1675,8 +2021,8 @@ local function draw()
             dl:AddRectFilled(P(mx, mpY), P(mx + MW, mpY + tgH), U32(PANEL[1], PANEL[2], PANEL[3], 1), 11 * scale)
             local mpA = animTo('maprow', (hovL or hovR or hovK) and 1 or 0, 14)
             if mpA > 0.01 then dl:AddRect(P(mx, mpY), P(mx + MW, mpY + tgH), U32(1, 1, 1, 0.10 * mpA), 11 * scale) end
-            drawText(dl, P(mx + 14 * scale, mpY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl('map', 'Быстрая карта'))
-            local subTxt = (m.key == 0) and 'Назначьте клавишу справа' or 'Видна, пока зажата клавиша'
+            drawText(dl, P(mx + 14 * scale, mpY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl('map', L('set_map')))
+            local subTxt = (m.key == 0) and L('map_sub_none') or L('map_sub')
             dl:AddText(P(mx + 14 * scale, mpY + tgH - lh - 9 * scale), GRAY, fitText(subTxt, chipX - mx - 28 * scale))
 
             -- кнопка клавиши
@@ -1689,16 +2035,16 @@ local function draw()
                 lerp(0.12 + 0.10 * chA, 0.9, chW8)), 8 * scale, 15, 1)
             local kLabel, kc
             if m.binding then
-                kLabel, kc = 'Нажмите...', ACCENT
+                kLabel, kc = L('key_press'), ACCENT
             elseif m.key == 0 then
-                kLabel, kc = 'Не задана', { 0.55, 0.57, 0.63 }
+                kLabel, kc = L('key_none'), { 0.55, 0.57, 0.63 }
             else
                 kLabel, kc = tog.keyName(m.key) or '?', { 0.92, 0.93, 0.96 }
             end
             kLabel = fitText(kLabel, chipW - 12 * scale)
             dl:AddText(P(chipX + (chipW - imgui.CalcTextSize(kLabel).x) / 2, chipY + (chipH - lh) / 2),
                 U32(kc[1], kc[2], kc[3], 1), kLabel)
-            if hovK then imgui.SetTooltip('Нажмите, затем клавишу или кнопку мыши. Esc - отмена, Backspace - сбросить') end
+            if hovK then imgui.SetTooltip(L('key_tip')) end
 
             -- переключатель
             local nowQ = os.clock()
@@ -1722,84 +2068,115 @@ local function draw()
             dl:AddCircleFilled(P(qkx, qswY + swH / 2), swH / 2 - 3 * scale, U32(qkr, qkg, qkb, 0.75 + 0.25 * t4), 16)
         end
 
-        -- оформление: выбор темы во всплывающем меню
-        local thHead = apY + (tgH + gap) * 3 + 6 * scale
-        drawText(dl, P(mx, thHead), GRAY, icl('palette', 'Оформление'))
-        local thY = thHead + lh + 8 * scale
-        local ma = animTo('thmenu', tog.themeOpen and 1 or 0, nil, 0.18) -- анимация меню 0..1
-        imgui.SetCursorPos(imgui.ImVec2(mx, thY))
-        if imgui.InvisibleButton('##themerow', imgui.ImVec2(MW, tgH)) then tog.themeOpen = not tog.themeOpen end
-        local thHov = imgui.IsItemHovered()
-        dl:AddRectFilled(P(mx, thY), P(mx + MW, thY + tgH), U32(PANEL[1], PANEL[2], PANEL[3], 1), 11 * scale)
-        local thA = animTo('themerow', thHov and 1 or 0, 14)
-        if thA > 0.01 then dl:AddRect(P(mx, thY), P(mx + MW, thY + tgH), U32(1, 1, 1, 0.10 * thA), 11 * scale) end
-        drawText(dl, P(mx + 14 * scale, thY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl('palette', 'Тема оформления'))
-        dl:AddText(P(mx + 14 * scale, thY + tgH - lh - 9 * scale), GRAY, THEMES[themeIdx].name)
-        -- образцы цветов текущей темы и стрелка
-        local cur = THEMES[themeIdx]
-        local sdx = mx + MW - 52 * scale
-        for _, c in ipairs({ cur.accent, cur.green, cur.red }) do
-            dl:AddCircleFilled(P(sdx, thY + tgH / 2), 7 * scale, U32(c[1], c[2], c[3], 1), 16)
-            sdx = sdx - 20 * scale
+        -- переключатель: autofind
+        do
+            local afY = apY + (tgH + gap) * 3
+            local a = tog.af
+            imgui.SetCursorPos(imgui.ImVec2(mx, afY))
+            if imgui.InvisibleButton('##togaf', imgui.ImVec2(MW, tgH)) then
+                a.on = not a.on
+                a.last = 0
+                tog.saveAf()
+            end
+            local afHov = imgui.IsItemHovered()
+            dl:AddRectFilled(P(mx, afY), P(mx + MW, afY + tgH), U32(PANEL[1], PANEL[2], PANEL[3], 1), 11 * scale)
+            local afA = animTo('afrow', afHov and 1 or 0, 14)
+            if afA > 0.01 then dl:AddRect(P(mx, afY), P(mx + MW, afY + tgH), U32(1, 1, 1, 0.10 * afA), 11 * scale) end
+            drawText(dl, P(mx + 14 * scale, afY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl('sync', L('set_af')))
+            local afSub = a.id and L('set_af_sub', a.id) or L('set_af_noid')
+            dl:AddText(P(mx + 14 * scale, afY + tgH - lh - 9 * scale), GRAY, fitText(afSub, MW - 28 * scale - swW - 16 * scale))
+            local fswX, fswY = mx + MW - 14 * scale - swW, afY + (tgH - swH) / 2
+            local nowF = os.clock()
+            local adtF = math.min(0.05, nowF - a.lastT)
+            a.lastT = nowF
+            local goalF = a.on and 1 or 0
+            a.t = a.t + (goalF - a.t) * (1 - math.exp(-adtF * 16))
+            if math.abs(goalF - a.t) < 0.01 then a.t = goalF end
+            local tf = a.t
+            if tf > 0 then
+                dl:AddRectFilled(P(fswX - 3 * scale, fswY - 3 * scale), P(fswX + swW + 3 * scale, fswY + swH + 3 * scale),
+                    U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.16 * tf), swH / 2 + 3 * scale)
+            end
+            dl:AddRectFilled(P(fswX, fswY), P(fswX + swW, fswY + swH),
+                U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.16 + 0.84 * tf), swH / 2)
+            dl:AddRect(P(fswX, fswY), P(fswX + swW, fswY + swH),
+                U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.40 * (1 - tf)), swH / 2)
+            local fkx = fswX + swH / 2 + (swW - swH) * tf
+            local fkr, fkg, fkb = ACCENT[1] + (0.07 - ACCENT[1]) * tf, ACCENT[2] + (0.08 - ACCENT[2]) * tf, ACCENT[3] + (0.10 - ACCENT[3]) * tf
+            dl:AddCircleFilled(P(fkx, fswY + swH / 2), swH / 2 - 3 * scale, U32(fkr, fkg, fkb, 0.75 + 0.25 * tf), 16)
         end
-        local chx, chy, chs = mx + MW - 26 * scale, thY + tgH / 2, 4 * scale
-        local chc = U32(lerp(0.65, ACCENT[1], ma), lerp(0.67, ACCENT[2], ma), lerp(0.73, ACCENT[3], ma), 1)
-        local cdir = 1 - 2 * ma -- стрелка плавно переворачивается
-        dl:AddLine(P(chx - chs, chy - cdir * chs / 2), P(chx, chy + cdir * chs / 2), chc, 2)
-        dl:AddLine(P(chx, chy + cdir * chs / 2), P(chx + chs, chy - cdir * chs / 2), chc, 2)
 
-        -- своё всплывающее меню тем: скруглённая панель с тенью, плавное появление
-        local mpad, ih, mg = 12 * scale, 34 * scale, 8 * scale
-        local mcw = math.floor((MW - mpad * 2 - mg) / 2)
-        local menuH = mpad * 2 + 4 * ih + 3 * mg
-        local menuTop = thY + tgH + 6 * scale
-        local mr0, mr1 = P(mx, menuTop), P(mx + MW, menuTop + menuH)
-        -- клик мимо меню закрывает его
-        if tog.themeOpen and imgui.IsMouseClicked(0) and not thHov and not imgui.IsMouseHoveringRect(mr0, mr1) then
-            tog.themeOpen = false
-        end
-        if ma > 0.01 then
-            local fdl = imgui.GetForegroundDrawList()
-            local oy = (1 - ma) * -10 * scale
-            local m0 = imgui.ImVec2(mr0.x, mr0.y + oy)
-            local m1 = imgui.ImVec2(mr1.x, mr1.y + oy)
-            local mr = 18 * scale
-            for k = 3, 1, -1 do -- мягкая тень
-                local e = k * 3 * scale
-                fdl:AddRectFilled(imgui.ImVec2(m0.x - e, m0.y - e + 5 * scale), imgui.ImVec2(m1.x + e, m1.y + e + 5 * scale),
-                    U32(0, 0, 0, 0.08 * ma), mr + e)
+        -- язык и тема: поле выбора + выпадающий список (окно списка рисует tog.ddRender после основного окна)
+        do
+            -- категория «Кастомизация» под общими настройками
+            local chY = tgY + (tgH + gap) * 5 + 6 * scale
+            drawText(dl, P(mx, chY), GRAY, icl('palette', L('set_custom')))
+            local cY = chY + lh + 8 * scale
+            local selH = math.floor(30 * scale)
+            local bound = wp.y + H - 10 * scale -- список не выходит за основное окно
+            local function field(id, okey, rowY, selW, iconName, title, sub, curText, dots, items, pick)
+                local selX = mx + MW - 14 * scale - selW
+                local selY = rowY + (tgH - selH) / 2
+                dl:AddRectFilled(P(mx, rowY), P(mx + MW, rowY + tgH), U32(PANEL[1], PANEL[2], PANEL[3], 1), 11 * scale)
+                drawText(dl, P(mx + 14 * scale, rowY + 9 * scale), U32(0.90, 0.91, 0.94, 1), icl(iconName, title))
+                dl:AddText(P(mx + 14 * scale, rowY + tgH - lh - 9 * scale), GRAY, fitText(sub, selX - mx - 28 * scale))
+
+                imgui.SetCursorPos(imgui.ImVec2(selX, selY))
+                local clicked = imgui.InvisibleButton('##sel' .. id, imgui.ImVec2(selW, selH))
+                local hov = imgui.IsItemHovered()
+                if clicked then
+                    local v = not tog[okey]
+                    tog.langOpen, tog.themeOpen = false, false
+                    tog[okey] = v
+                end
+                local isOpen = tog[okey]
+                local a = animTo('dd' .. id, isOpen and 1 or 0, nil, 0.16)
+                local sh = animTo('ddsel' .. id, hov and 1 or 0, 14)
+                local s0, s1 = P(selX, selY), P(selX + selW, selY + selH)
+                dl:AddRectFilled(s0, s1, U32(1, 1, 1, 0.05 + 0.04 * sh), 8 * scale)
+                if a > 0.01 then dl:AddRectFilled(s0, s1, U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.14 * a), 8 * scale) end
+                dl:AddRect(s0, s1, U32(lerp(1, ACCENT[1], a), lerp(1, ACCENT[2], a), lerp(1, ACCENT[3], a),
+                    lerp(0.12 + 0.10 * sh, 0.9, a)), 8 * scale, 15, 1)
+                local tx = selX + 12 * scale
+                if dots then
+                    for k, c in ipairs(dots) do
+                        dl:AddCircleFilled(P(selX + 16 * scale + (k - 1) * 12 * scale, selY + selH / 2), 4.5 * scale,
+                            U32(c[1], c[2], c[3], 1), 14)
+                    end
+                    tx = selX + 16 * scale + 3 * 12 * scale
+                end
+                dl:AddText(P(tx, selY + (selH - lh) / 2), U32(0.92, 0.93, 0.96, 1), fitText(curText, selX + selW - 34 * scale - tx))
+                -- стрелка плавно переворачивается при открытии
+                local chx, chy, chs = selX + selW - 17 * scale, selY + selH / 2, 3.5 * scale
+                local cdir = 1 - 2 * a
+                local chc = U32(lerp(0.65, ACCENT[1], a), lerp(0.67, ACCENT[2], a), lerp(0.73, ACCENT[3], a), 1)
+                dl:AddLine(P(chx - chs, chy - cdir * chs / 2), P(chx, chy + cdir * chs / 2), chc, 2)
+                dl:AddLine(P(chx, chy + cdir * chs / 2), P(chx + chs, chy - cdir * chs / 2), chc, 2)
+
+                -- клик мимо поля и списка закрывает список
+                if isOpen and imgui.IsMouseClicked(0) and not hov and not tog.ddIn[id] then tog[okey] = false end
+                local o = P(selX, selY + selH + 4 * scale)
+                tog.ddReq[#tog.ddReq + 1] = { id = id, okey = okey, alpha = a, open = isOpen, x = o.x, y = o.y, w = selW,
+                    bound = bound, yUp = wp.y + selY - 4 * scale, top = wp.y + 10 * scale, maxRows = 5, items = items, pick = pick }
             end
-            fdl:AddRectFilled(m0, m1, U32(math.min(1, BG[1] + 0.035), math.min(1, BG[2] + 0.035), math.min(1, BG[3] + 0.04), 0.99 * ma), mr)
-            fdl:AddRect(m0, m1, U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.28 * ma), mr, 15, 1)
+
+            -- язык
+            local litems = {}
+            for _, code in ipairs(tog.LANGS) do
+                litems[#litems + 1] = { name = tog.LANG_NAME[code], sel = (tog.lang == code), accent = ACCENT }
+            end
+            field('lang', 'langOpen', cY, math.floor(150 * scale), 'globe', L('set_lang'), L('set_lang_sub'),
+                tog.LANG_NAME[tog.lang] or '?', nil, litems, function(i) tog.setLang(tog.LANGS[i]) end)
+
+            -- тема
+            local titems = {}
             for i, t in ipairs(THEMES) do
-                local ix = m0.x + mpad + ((i - 1) % 2) * (mcw + mg)
-                local iy = m0.y + mpad + math.floor((i - 1) / 2) * (ih + mg)
-                local p0, p1 = imgui.ImVec2(ix, iy), imgui.ImVec2(ix + mcw, iy + ih)
-                local hov = tog.themeOpen and imgui.IsMouseHoveringRect(p0, p1)
-                local sel = (themeIdx == i)
-                local hA = animTo('pc' .. i, hov and 1 or 0, 14)
-                local sA = animTo('ps' .. i, sel and 1 or 0, 12)
-                local ta = t.accent
-                -- таблетка с цветом темы
-                fdl:AddRectFilled(p0, p1, U32(t.panel[1], t.panel[2], t.panel[3], ma), ih / 2)
-                if sA > 0.01 then fdl:AddRectFilled(p0, p1, U32(ta[1], ta[2], ta[3], 0.14 * sA * ma), ih / 2) end
-                fdl:AddRect(p0, p1, U32(1, 1, 1, lerp(0.07, 0.22, hA) * (1 - sA) * ma), ih / 2)
-                if sA > 0.01 then fdl:AddRect(p0, p1, U32(ta[1], ta[2], ta[3], 0.9 * sA * ma), ih / 2, 15, 2) end
-                -- три цветные точки темы
-                for k, c in ipairs({ ta, t.green, t.red }) do
-                    fdl:AddCircleFilled(imgui.ImVec2(ix + 18 * scale + (k - 1) * 13 * scale, iy + ih / 2), 5.5 * scale,
-                        U32(c[1], c[2], c[3], ma), 14)
-                end
-                local nty = iy + (ih - lh) / 2
-                drawText(fdl, imgui.ImVec2(ix + 64 * scale, nty), U32(0.92, 0.93, 0.96, ma), t.name)
-                if sA > 0.02 then
-                    drawText(fdl, imgui.ImVec2(p1.x - 28 * scale, nty), U32(ta[1], ta[2], ta[3], sA * ma), ic('check'))
-                end
-                if hov and ma > 0.6 and imgui.IsMouseClicked(0) then
-                    setTheme(i)
-                    tog.themeOpen = false
-                end
+                titems[#titems + 1] = { name = L('theme' .. i), sel = (themeIdx == i), accent = t.accent,
+                    dots = { t.accent, t.green, t.red } }
             end
+            local cur = THEMES[themeIdx]
+            field('theme', 'themeOpen', cY + tgH + gap, math.floor(190 * scale), 'palette', L('set_theme'), L('set_theme_sub'),
+                L('theme' .. themeIdx), { cur.accent, cur.green, cur.red }, titems, function(i) setTheme(i) end)
         end
 
     end
@@ -1807,12 +2184,13 @@ local function draw()
     -- подсказка / баланс для проверки
     imgui.SetCursorPos(imgui.ImVec2(mx, H - PAD - imgui.GetTextLineHeight()))
     imgui.PushStyleColor(imgui.Col.Text, V4(0.45, 0.47, 0.54, 1))
-    imgui.TextUnformatted(balance and ('Баланс: ' .. fmtMoney(balance) .. '  ·  Esc - закрыть') or 'Баланс не читается  ·  Esc - закрыть')
+    imgui.TextUnformatted(balance and L('footer_bal', fmtMoney(balance)) or L('footer_nobal'))
     imgui.PopStyleColor()
 
     imgui.End()
     imgui.PopStyleColor(2)
     imgui.PopStyleVar(2)
+    tog.ddRender() -- окна выпадающих списков поверх основного
 end
 
 local frame = imgui.OnFrame(function() return window[0] end, draw)
@@ -1848,7 +2226,7 @@ local function drawDist()
     local sx, sy = getScreenResolution()
 
     local col = (dist <= 50) and GREEN or ACCENT
-    local str = fmtInt(dist) .. ' м'
+    local str = fmtInt(dist) .. ' ' .. tog.L('unit_m')
 
     -- размер плашки: стрелка + текст
     if fontDist then imgui.PushFont(fontDist) end
@@ -2068,9 +2446,9 @@ function tog.drawMap()
             dl:AddLine(imgui.ImVec2(x0 + 8 * scale, y0 + t), imgui.ImVec2(x0 + S - 8 * scale, y0 + t), C(1, 1, 1, 0.05), 1)
         end
         local dls = tog.map.dl
-        local l1 = (dls == 'err') and 'Не удалось скачать карту'
-            or ((dls == 'loading' or dls == 'done') and 'Загрузка карты с GitHub...' or 'Нет изображения карты')
-        local l2 = (dls == 'err') and 'Проверьте интернет, повтор через минуту' or 'Подождите несколько секунд'
+        local l1 = (dls == 'err') and tog.L('map_err1')
+            or ((dls == 'loading' or dls == 'done') and tog.L('map_load1') or tog.L('map_none'))
+        local l2 = (dls == 'err') and tog.L('map_err2') or tog.L('map_load2')
         local w1, w2 = imgui.CalcTextSize(l1).x, imgui.CalcTextSize(l2).x
         local lhh = imgui.GetTextLineHeight()
         dl:AddText(imgui.ImVec2(x0 + (S - w1) / 2, y0 + S / 2 - lhh - 2 * scale), C(0.92, 0.93, 0.96, 1), l1)
@@ -2104,7 +2482,7 @@ function tog.drawMap()
             dl:AddCircleFilled(imgui.ImVec2(mx2, my2), (8 + 5 * pulse) * scale, C(RED[1], RED[2], RED[3], 0.22), 20)
             dl:AddCircleFilled(imgui.ImVec2(mx2, my2), 6 * scale, C(RED[1], RED[2], RED[3], 1), 16)
             dl:AddCircle(imgui.ImVec2(mx2, my2), 6 * scale, C(1, 1, 1, 0.95), 16, 2)
-            distTxt = fmtInt(math.sqrt((mp.x - px) ^ 2 + (mp.y - py) ^ 2)) .. ' м до метки'
+            distTxt = tog.L('map_dist', fmtInt(math.sqrt((mp.x - px) ^ 2 + (mp.y - py) ^ 2)))
         end
         -- стрелка игрока (по направлению персонажа)
         local okH, hd = pcall(getCharHeading, PLAYER_PED)
@@ -2121,7 +2499,7 @@ function tog.drawMap()
     end
 
     -- плашка сверху
-    local label = distTxt and ('Карта  ·  ' .. distTxt) or 'Карта'
+    local label = distTxt and (tog.L('map_title') .. '  ·  ' .. distTxt) or tog.L('map_title')
     local lw = imgui.CalcTextSize(label).x
     local lh2 = imgui.GetTextLineHeight()
     local bx0, by0 = x0 + 12 * scale, y0 + 12 * scale
@@ -2234,6 +2612,14 @@ end)
 -- Сообщения сервера: выплаты за заказы такси
 ------------------------------------------------------------------
 if sampev then
+    function sampev.onSendCommand(cmd)
+        local id = tonumber(cmd:match('^/find%s+(%d+)'))
+        if id and id ~= tog.af.id then
+            tog.af.id = id
+            tog.saveAf()
+        end
+    end
+
     function sampev.onSetCheckpoint(position, radius)
         mark.cp = { x = position.x, y = position.y, z = position.z }
     end
@@ -2310,10 +2696,17 @@ function main()
     while not isSampAvailable() do wait(100) end
 
     sampRegisterChatCommand('wss', function() setOpen(not window[0]) end)
-    say('загружен. /wss - открыть меню статистики работ')
-    if not sampev then say('не найдена библиотека SAMP.Lua - доход такси считаться не будет') end
+    sampRegisterChatCommand('af', function(arg)
+        local a = tog.af
+        local n = tonumber(arg or '')
+        if n then a.id, a.on = n, true else a.on = not a.on end
+        tog.saveAf()
+        say('autofind: ' .. (a.on and 'ON' or 'OFF') .. (a.id and (' (/find ' .. a.id .. ')') or ''))
+    end)
+    say(tog.L('msg_loaded'))
+    if not sampev then say(tog.L('msg_nosamp')) end
     if tog.recovered then
-        say('найден незавершённый сеанс (выход, вылет или кик). /wss - продолжить или сохранить в историю')
+        say(tog.L('msg_recovered'))
     end
     tog.checkUpdate(true) -- тихая проверка обновлений при запуске
 
