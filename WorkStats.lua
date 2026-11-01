@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.35')
+script_version('1.36')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -1910,11 +1910,8 @@ function tog.auSession(c, rec, bannerH)
     tog.auStat(dl, gx + tw2 + gap, y0 + (1 - e2) * 12 * scale, tw2, th2, 'check', L('orders'),
         tostring(math.floor(tog.auN('c' .. job.id, s.sCount) + 0.5)), GREEN)
     local e3 = tog.auSt(3)
-    tog.auStat(dl, gx, y0 + th2 + gap + (1 - e3) * 12 * scale, tw2, th2, 'wallet', L('spent'),
+    tog.auStat(dl, gx, y0 + th2 + gap + (1 - e3) * 12 * scale, gw, th2, 'wallet', L('spent'),
         fmtMoney(math.floor(tog.auN('s' .. job.id, s.sSpent) + 0.5)), RED)
-    local e4 = tog.auSt(4)
-    tog.auStat(dl, gx + tw2 + gap, y0 + th2 + gap + (1 - e4) * 12 * scale, tw2, th2, 'chart', L('per_hour'),
-        fmtMoney(math.floor(tog.auN('h' .. job.id, perHour(s.sEarned, s.sSecs)) + 0.5)), ACCENT)
     tog.auC = 1
 
     -- баннер незавершённого сеанса
