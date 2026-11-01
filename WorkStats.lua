@@ -256,7 +256,7 @@ end
 tog.loadMini()
 tog.t3 = tog.miShow and 1 or 0
 
--- autofind: раз в 3 секунды повторяет /find ID (ID берётся из последнего /find или /af ID)
+-- autofind: раз в 2 секунды повторяет /find ID (ID берётся из последнего /find или /af ID)
 tog.af = { on = false, id = nil, last = 0, t = 0, lastT = os.clock() }
 tog.afPath = getWorkingDirectory() .. '\\config\\work_stats_af.cfg'
 function tog.saveAf()
@@ -300,7 +300,7 @@ function tog.afTick()
     if not a.on or not a.id then return end
     if not isSampAvailable() or sampGetGamestate() ~= 3 then return end
     local now = os.clock()
-    if now - a.last < 3 then return end
+    if now - a.last < 2 then return end
     a.last = now
     sampSendChat('/find ' .. a.id)
 end
@@ -375,7 +375,7 @@ tog.TR = {
         set_dist = 'Расстояние до метки', set_dist_sub = 'Показывать при наличии метки. Двигайте плашку мышью',
         set_pause = 'Автопауза', set_pause_sub = 'Пауза, если долго нет выплат',
         set_mini = 'Мини-окно', set_mini_sub = 'Доход и время сеанса поверх игры. Двигайте мышью',
-        set_af = 'Autofind', set_af_sub = 'Повторять /find %d раз в 3 секунды', set_af_noid = 'Сначала введите /find ID или /af ID',
+        set_af = 'Autofind', set_af_sub = 'Повторять /find %d раз в 2 секунды', set_af_noid = 'Сначала введите /find ID или /af ID',
         set_style = 'Стиль меню', set_style_sub = 'Классический или новый WorkHelper', style_classic = 'Классический', style_aurora = 'WorkHelper', sub_aur = 'Ваш помощник в работе',
         set_map = 'Быстрая карта', map_sub_none = 'Назначьте клавишу справа', map_sub = 'Видна, пока зажата клавиша',
         key_press = 'Нажмите...', key_none = 'Не задана',
@@ -420,7 +420,7 @@ tog.TR = {
         set_dist = 'Distance to marker', set_dist_sub = 'Shown when a marker exists. Drag the badge with the mouse',
         set_pause = 'Auto-pause', set_pause_sub = 'Pause if there are no payouts for a long time',
         set_mini = 'Mini window', set_mini_sub = 'Session income and time over the game. Drag with the mouse',
-        set_af = 'Autofind', set_af_sub = 'Repeat /find %d every 3 seconds', set_af_noid = 'First type /find ID or /af ID',
+        set_af = 'Autofind', set_af_sub = 'Repeat /find %d every 2 seconds', set_af_noid = 'First type /find ID or /af ID',
         set_style = 'Menu style', set_style_sub = 'Classic or the new WorkHelper', style_classic = 'Classic', style_aurora = 'WorkHelper', sub_aur = 'Your work helper',
         set_map = 'Quick map', map_sub_none = 'Assign a key on the right', map_sub = 'Visible while the key is held',
         key_press = 'Press...', key_none = 'Not set',
@@ -465,7 +465,7 @@ tog.TR = {
         set_dist = 'Відстань до мітки', set_dist_sub = 'Показувати за наявності мітки. Рухайте плашку мишею',
         set_pause = 'Автопауза', set_pause_sub = 'Пауза, якщо довго немає виплат',
         set_mini = 'Міні-вікно', set_mini_sub = 'Дохід і час сеансу поверх гри. Рухайте мишею',
-        set_af = 'Autofind', set_af_sub = 'Повторювати /find %d кожні 3 секунди', set_af_noid = 'Спершу введіть /find ID або /af ID',
+        set_af = 'Autofind', set_af_sub = 'Повторювати /find %d кожні 2 секунди', set_af_noid = 'Спершу введіть /find ID або /af ID',
         set_style = 'Стиль меню', set_style_sub = 'Класичний або новий WorkHelper', style_classic = 'Класичний', style_aurora = 'WorkHelper', sub_aur = 'Ваш помічник у роботі',
         set_map = 'Швидка карта', map_sub_none = 'Призначте клавішу праворуч', map_sub = 'Видно, поки затиснута клавіша',
         key_press = 'Натисніть...', key_none = 'Не задано',
@@ -1123,30 +1123,15 @@ local function tick()
         local s = stats[running]
         s.sSecs = s.sSecs + dt
         s.secs = s.secs + dt
-        local drop = tog.drop
-        if drop then
-            -- Деньги упали на одном из прошлых тиков. Ждём 1.5 с: если они вернулись -
-            -- это сброс баланса сервером (ResetPlayerMoney + GivePlayerMoney), а не трата.
-            if m >= drop.base then
-                tog.drop = nil
-                local extra = m - drop.base
-                if extra > 0 and running ~= 'taxi' then creditPayout(s, extra) end
-            elseif now - drop.t >= 1.5 then
-                tog.drop = nil
-                s.sSpent, s.spent = s.sSpent + (drop.base - m), s.spent + (drop.base - m)
-            end
-        else
-            local delta = m - lastMoney
-            if delta > 0 then
-                -- такси считается по сообщению сервера (см. sampev.onServerMessage),
-                -- рост баланса игнорируется; остальные работы - как раньше
-                if running ~= 'taxi' then creditPayout(s, delta) end
-            elseif delta < 0 then -- возможная трата: подтверждаем через 1.5 с
-                tog.drop = { base = lastMoney, t = now }
-            end
+        local delta = m - lastMoney
+        if delta > 0 then
+            -- такси считается по сообщению сервера (см. sampev.onServerMessage),
+            -- рост баланса игнорируется; остальные работы - как раньше
+            if running ~= 'taxi' then creditPayout(s, delta) end
+        elseif delta < 0 then -- расходы (аренда, бензин и т.д.)
+            s.sSpent, s.spent = s.sSpent - delta, s.spent - delta
         end
     end
-    if not running then tog.drop = nil end
     lastMoney = m
 
     -- кик / обрыв соединения: сеанс не идёт в историю, а помечается незавершённым
@@ -1910,8 +1895,11 @@ function tog.auSession(c, rec, bannerH)
     tog.auStat(dl, gx + tw2 + gap, y0 + (1 - e2) * 12 * scale, tw2, th2, 'check', L('orders'),
         tostring(math.floor(tog.auN('c' .. job.id, s.sCount) + 0.5)), GREEN)
     local e3 = tog.auSt(3)
-    tog.auStat(dl, gx, y0 + th2 + gap + (1 - e3) * 12 * scale, gw, th2, 'wallet', L('spent'),
+    tog.auStat(dl, gx, y0 + th2 + gap + (1 - e3) * 12 * scale, tw2, th2, 'wallet', L('spent'),
         fmtMoney(math.floor(tog.auN('s' .. job.id, s.sSpent) + 0.5)), RED)
+    local e4 = tog.auSt(4)
+    tog.auStat(dl, gx + tw2 + gap, y0 + th2 + gap + (1 - e4) * 12 * scale, tw2, th2, 'chart', L('per_hour'),
+        fmtMoney(math.floor(tog.auN('h' .. job.id, perHour(s.sEarned, s.sSecs)) + 0.5)), ACCENT)
     tog.auC = 1
 
     -- баннер незавершённого сеанса
@@ -2304,7 +2292,7 @@ function tog.drawAurora()
     if tab ~= 4 then tog.auActions(c) end
 
     dl:AddText(V2(wp.x + PAD, wp.y + H - 14 * scale - lh), tog.aU(0.45, 0.47, 0.54, 1),
-        balance and L('footer_bal', fmtMoney(balance)) or L('footer_nobal'))
+        balance and tog.L('footer_bal', fmtMoney(balance)) or tog.L('footer_nobal'))
 
     imgui.End()
     imgui.PopStyleColor(2)
@@ -3189,7 +3177,7 @@ local function draw()
     -- подсказка / баланс для проверки
     imgui.SetCursorPos(imgui.ImVec2(mx, H - PAD - imgui.GetTextLineHeight()))
     imgui.PushStyleColor(imgui.Col.Text, V4(0.45, 0.47, 0.54, 1))
-    imgui.TextUnformatted(balance and L('footer_bal', fmtMoney(balance)) or L('footer_nobal'))
+    imgui.TextUnformatted(balance and tog.L('footer_bal', fmtMoney(balance)) or tog.L('footer_nobal'))
     imgui.PopStyleColor()
 
     imgui.End()
@@ -3298,7 +3286,6 @@ end
 
 local distFrame
 distFrame = imgui.OnFrame(function()
-    if distFrame then distFrame.HideCursor = not window[0] end
     return showDist and (markerPos() ~= nil or window[0])
 end, drawDist)
 distFrame.HideCursor = true
@@ -3375,7 +3362,6 @@ function tog.drawMini()
 end
 
 tog.miFrame = imgui.OnFrame(function()
-    if tog.miFrame then tog.miFrame.HideCursor = not window[0] end
     return tog.miShow and (running ~= nil or window[0])
 end, tog.drawMini)
 tog.miFrame.HideCursor = true
