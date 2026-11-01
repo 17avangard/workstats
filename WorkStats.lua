@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.29')
+script_version('1.30')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -276,6 +276,25 @@ function tog.loadAf()
 end
 tog.loadAf()
 tog.af.t = tog.af.on and 1 or 0
+
+-- стиль меню: 'classic' (прежний) или 'aurora' (новый WorkHelper)
+tog.style, tog.styleOpen = 'classic', false
+tog.stylePath = getWorkingDirectory() .. '\\config\\work_stats_style.cfg'
+function tog.saveStyle()
+    pcall(createDirectory, getWorkingDirectory() .. '\\config')
+    local f = io.open(tog.stylePath, 'w')
+    if not f then return end
+    f:write(tog.style .. '\n')
+    f:close()
+end
+function tog.loadStyle()
+    local f = io.open(tog.stylePath, 'r')
+    if not f then return end
+    local v = f:read('*l')
+    f:close()
+    if v == 'aurora' then tog.style = 'aurora' end
+end
+tog.loadStyle()
 function tog.afTick()
     local a = tog.af
     if not a.on or not a.id then return end
@@ -357,6 +376,7 @@ tog.TR = {
         set_pause = 'Автопауза', set_pause_sub = 'Пауза, если долго нет выплат',
         set_mini = 'Мини-окно', set_mini_sub = 'Доход и время сеанса поверх игры. Двигайте мышью',
         set_af = 'Autofind', set_af_sub = 'Повторять /find %d раз в 2 секунды', set_af_noid = 'Сначала введите /find ID или /af ID',
+        set_style = 'Стиль меню', set_style_sub = 'Классический или новый WorkHelper', style_classic = 'Классический', style_aurora = 'WorkHelper', sub_aur = 'Ваш помощник в работе',
         set_map = 'Быстрая карта', map_sub_none = 'Назначьте клавишу справа', map_sub = 'Видна, пока зажата клавиша',
         key_press = 'Нажмите...', key_none = 'Не задана',
         key_tip = 'Нажмите, затем клавишу или кнопку мыши. Esc - отмена, Backspace - сбросить',
@@ -401,6 +421,7 @@ tog.TR = {
         set_pause = 'Auto-pause', set_pause_sub = 'Pause if there are no payouts for a long time',
         set_mini = 'Mini window', set_mini_sub = 'Session income and time over the game. Drag with the mouse',
         set_af = 'Autofind', set_af_sub = 'Repeat /find %d every 2 seconds', set_af_noid = 'First type /find ID or /af ID',
+        set_style = 'Menu style', set_style_sub = 'Classic or the new WorkHelper', style_classic = 'Classic', style_aurora = 'WorkHelper', sub_aur = 'Your work helper',
         set_map = 'Quick map', map_sub_none = 'Assign a key on the right', map_sub = 'Visible while the key is held',
         key_press = 'Press...', key_none = 'Not set',
         key_tip = 'Click, then press a key or mouse button. Esc - cancel, Backspace - clear',
@@ -445,6 +466,7 @@ tog.TR = {
         set_pause = 'Автопауза', set_pause_sub = 'Пауза, якщо довго немає виплат',
         set_mini = 'Міні-вікно', set_mini_sub = 'Дохід і час сеансу поверх гри. Рухайте мишею',
         set_af = 'Autofind', set_af_sub = 'Повторювати /find %d кожні 2 секунди', set_af_noid = 'Спершу введіть /find ID або /af ID',
+        set_style = 'Стиль меню', set_style_sub = 'Класичний або новий WorkHelper', style_classic = 'Класичний', style_aurora = 'WorkHelper', sub_aur = 'Ваш помічник у роботі',
         set_map = 'Швидка карта', map_sub_none = 'Призначте клавішу праворуч', map_sub = 'Видно, поки затиснута клавіша',
         key_press = 'Натисніть...', key_none = 'Не задано',
         key_tip = 'Натисніть, потім клавішу або кнопку миші. Esc - скасувати, Backspace - скинути',
@@ -594,7 +616,7 @@ local function V4(r, g, b, a) return imgui.ImVec4(r, g, b, a or 1) end
 local function U32(r, g, b, a) return imgui.ColorConvertFloat4ToU32(imgui.ImVec4(r, g, b, a or 1)) end
 
 local function say(text)
-    sampAddChatMessage(u8:decode('[WorkStats] ' .. text), 0xFF779ECB)
+    sampAddChatMessage(u8:decode('[' .. (tog.style == 'aurora' and 'WorkHelper' or 'WorkStats') .. '] ' .. text), 0xFF779ECB)
 end
 
 local function fmtMoney(n)
@@ -687,7 +709,7 @@ loadStats()
 
 local function setOpen(v)
     window[0] = v and true or false
-    if not v then tog.themeOpen = false; tog.langOpen = false; tog.map.binding = false end
+    if not v then tog.themeOpen = false; tog.langOpen = false; tog.styleOpen = false; tog.map.binding = false end
     if v and not locked then
         lockPlayerControl(true)
         locked = true
@@ -1185,12 +1207,15 @@ local function styledButton(id, label, w, h, primary)
     local tc
     if primary then
         local k = 1.0 + 0.06 * hA - 0.24 * aA
-        dl:AddRectFilled(pos, p2, U32(math.min(1, ACCENT[1] * k), math.min(1, ACCENT[2] * k), math.min(1, ACCENT[3] * k), 1), r)
-        tc = U32(0.07, 0.08, 0.10, 1)
+        dl:AddRectFilled(pos, p2, tog.aU(math.min(1, ACCENT[1] * k), math.min(1, ACCENT[2] * k), math.min(1, ACCENT[3] * k), 1), r)
+        if tog.style == 'aurora' then
+            tog.aHalf(dl, pos, p2, tog.aU(1, 1, 1, 0.14), r, true) -- блик сверху
+        end
+        tc = tog.aU(0.07, 0.08, 0.10, 1)
     else
-        dl:AddRectFilled(pos, p2, U32(1, 1, 1, 0.03 + 0.03 * hA + 0.02 * aA), r)
-        dl:AddRect(pos, p2, U32(1, 1, 1, 0.09 + 0.07 * hA), r)
-        tc = U32(0.82, 0.84, 0.88, 1)
+        dl:AddRectFilled(pos, p2, tog.aU(1, 1, 1, 0.03 + 0.03 * hA + 0.02 * aA), r)
+        dl:AddRect(pos, p2, tog.aU(1, 1, 1, 0.09 + 0.07 * hA), r)
+        tc = tog.aU(0.82, 0.84, 0.88, 1)
     end
     if #label == 3 and label:byte(1) == 0xEF then
         -- одиночная иконка: центр по реальным границам глифа
@@ -1205,7 +1230,12 @@ end
 local function statCard(label, value, w, h)
     local pos = imgui.GetCursorScreenPos()
     local dl = imgui.GetWindowDrawList()
-    dl:AddRectFilled(pos, imgui.ImVec2(pos.x + w, pos.y + h), U32(PANEL[1], PANEL[2], PANEL[3], 1), 11 * scale)
+    if tog.style == 'aurora' then
+        dl:AddRectFilled(pos, imgui.ImVec2(pos.x + w, pos.y + h), U32(1, 1, 1, 0.045), 14 * scale)
+        dl:AddRect(pos, imgui.ImVec2(pos.x + w, pos.y + h), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.20), 14 * scale)
+    else
+        dl:AddRectFilled(pos, imgui.ImVec2(pos.x + w, pos.y + h), U32(PANEL[1], PANEL[2], PANEL[3], 1), 11 * scale)
+    end
     drawText(dl, imgui.ImVec2(pos.x + 14 * scale, pos.y + 10 * scale), U32(0.55, 0.57, 0.63, 1), label)
     if fontTitle then imgui.PushFont(fontTitle) end
     dl:AddText(imgui.ImVec2(pos.x + 14 * scale, pos.y + h - imgui.GetTextLineHeight() - 10 * scale), U32(0.90, 0.91, 0.94, 1), value)
@@ -1363,23 +1393,935 @@ function tog.ddRender()
     end
 end
 
+------------------------------------------------------------------
+-- WorkHelper: НОВЫЙ макет меню (не перекраска классики).
+-- Без боковой панели: шапка с чипами работ, герой-карта с живой линией пульса,
+-- плитки метрик, сегмент-переключатель и нижняя панель действий.
+------------------------------------------------------------------
+tog.TR.ru.per_hour, tog.TR.en.per_hour, tog.TR.uk.per_hour = 'В час', 'Per hour', 'За годину'
+
+------------------------------------------------------------------
+-- Общие помощники анимации и «чёткой» отрисовки
+------------------------------------------------------------------
+tog.auA, tog.auC, tog.auCT = 1, 1, 10          -- общая прозрачность окна / элемента, время с последней смены вкладки
+tog.auT0, tog.auLast, tog.auKT, tog.auKey = 0, -10, 0, ''
+tog.auNum, tog.auHL, tog.auRec = {}, nil, nil
+
+function tog.aU(r, g, b, a) return U32(r, g, b, (a or 1) * tog.auA * tog.auC) end
+
+-- прямоугольники по целым пикселям: заливка без «мыла», обводка ровно по краю заливки
+function tog.aF(dl, p0, p1, col, rr, fl)
+    local a = imgui.ImVec2(math.floor(p0.x + 0.5), math.floor(p0.y + 0.5))
+    local b = imgui.ImVec2(math.floor(p1.x + 0.5), math.floor(p1.y + 0.5))
+    if fl then dl:AddRectFilled(a, b, col, rr or 0, fl)
+    elseif rr then dl:AddRectFilled(a, b, col, rr)
+    else dl:AddRectFilled(a, b, col) end
+end
+function tog.aR(dl, p0, p1, col, rr, fl, th)
+    local a = imgui.ImVec2(math.floor(p0.x + 0.5) + 0.5, math.floor(p0.y + 0.5) + 0.5)
+    local b = imgui.ImVec2(math.floor(p1.x + 0.5) - 0.5, math.floor(p1.y + 0.5) - 0.5)
+    if th then dl:AddRect(a, b, col, rr or 0, fl or 15, th)
+    elseif rr then dl:AddRect(a, b, col, rr)
+    else dl:AddRect(a, b, col) end
+end
+
+-- половина скруглённого прямоугольника (top=true - верхняя, false - нижняя) через обрезку:
+-- не зависит от флагов углов конкретной версии imgui
+function tog.aHalf(dl, p0, p1, col, rr, top)
+    local V2 = imgui.ImVec2
+    local a = V2(math.floor(p0.x + 0.5), math.floor(p0.y + 0.5))
+    local b = V2(math.floor(p1.x + 0.5), math.floor(p1.y + 0.5))
+    local my = math.floor((a.y + b.y) / 2)
+    if top then dl:PushClipRect(a, V2(b.x, my), true) else dl:PushClipRect(V2(a.x, my), b, true) end
+    dl:AddRectFilled(a, b, col, rr)
+    dl:PopClipRect()
+end
+
+-- каскадное появление элемента номер i (0 - первый): задаёт прозрачность и возвращает прогресс 0..1
+function tog.auSt(i)
+    local p = math.max(0, math.min(1, (tog.auCT - 0.07 * i) / 0.45))
+    local e = 1 - (1 - p) ^ 3
+    tog.auC = e
+    return e
+end
+
+-- плавно «накручивающееся» число
+function tog.auN(key, target)
+    local e = tog.auNum[key]
+    if not e then e = { v = target }; tog.auNum[key] = e end
+    e.v = e.v + (target - e.v) * (1 - math.exp(-hvDt * 7))
+    if math.abs(target - e.v) < 0.5 then e.v = target end
+    return e.v
+end
+
+-- форма одного "удара" пульса (ЭКГ), p - фаза 0..1
+function tog.auBeat(p)
+    p = p % 1
+    local e = math.exp
+    return 0.12 * e(-((p - 0.18) ^ 2) / 0.004) - 0.14 * e(-((p - 0.36) ^ 2) / 0.0012)
+        + 1.00 * e(-((p - 0.40) ^ 2) / 0.0008) - 0.32 * e(-((p - 0.44) ^ 2) / 0.0012)
+        + 0.22 * e(-((p - 0.66) ^ 2) / 0.006)
+end
+
+function tog.auLogo(dl, x, y, lg)
+    local V2 = imgui.ImVec2
+    local t = os.clock()
+    local br = 0.5 + 0.5 * math.sin(t * 1.6)
+    for gi = 1, 6 do -- дышащее свечение
+        tog.aF(dl, V2(x - gi * 1.6 * scale, y - gi * 1.6 * scale), V2(x + lg + gi * 1.6 * scale, y + lg + gi * 1.6 * scale),
+            tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.012 + 0.02 * br), (12 + gi * 1.6) * scale)
+    end
+    local r = 12 * scale
+    local p0, p1 = V2(x, y), V2(x + lg, y + lg)
+    tog.aF(dl, p0, p1, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 1), r)
+    tog.aHalf(dl, p0, p1, tog.aU(0.10, 0.12, 0.30, 0.22), r, false) -- тень снизу
+    tog.aHalf(dl, p0, p1, tog.aU(1, 1, 1, 0.16), r, true)           -- блик сверху
+    tog.aR(dl, p0, p1, tog.aU(1, 1, 1, 0.22), r)                    -- тонкая светлая кромка
+
+    -- блик, пробегающий по значку раз в несколько секунд
+    local ph = (t % 4.5) / 1.5
+    if ph < 1 then
+        dl:PushClipRect(V2(x + 2 * scale, y + 2 * scale), V2(x + lg - 2 * scale, y + lg - 2 * scale), true)
+        local bx = x + lg * (-0.35 + 1.7 * ph)
+        local sw, sl = lg * 0.16, lg * 0.5
+        dl:AddQuadFilled(V2(bx, y), V2(bx + sw, y), V2(bx + sw - sl, y + lg), V2(bx - sl, y + lg),
+            tog.aU(1, 1, 1, 0.28 * math.sin(math.pi * ph)))
+        dl:PopClipRect()
+    end
+
+    -- три растущих столбика (доход), слегка «дышат»
+    local base, bw = y + lg * 0.80, lg * 0.17
+    local hs = { 0.20, 0.34, 0.48 }
+    for k = 1, 3 do
+        local bx = x + lg * (0.20 + (k - 1) * 0.20)
+        local hgt = lg * hs[k] * (0.93 + 0.07 * math.sin(t * 2.2 + k * 0.9))
+        tog.aF(dl, V2(bx, base - hgt), V2(bx + bw, base), tog.aU(0.07, 0.08, 0.12, 0.50 + 0.17 * k), 2 * scale)
+    end
+
+    -- мерцающая искра («помощник»)
+    local tw = 0.5 + 0.5 * math.sin(t * 3.2)
+    local px, py = x + lg * 0.76, y + lg * 0.17
+    local sr = lg * (0.06 + 0.04 * tw)
+    local sc = tog.aU(1, 1, 1, 0.55 + 0.45 * tw)
+    dl:AddLine(V2(px - sr, py), V2(px + sr, py), sc, 1.6 * scale)
+    dl:AddLine(V2(px, py - sr), V2(px, py + sr), sc, 1.6 * scale)
+    dl:AddCircleFilled(V2(px, py), 1.4 * scale, sc, 8)
+end
+
+-- переключатель (абсолютные экранные координаты)
+function tog.auSwitch(dl, id, x, y, on)
+    local V2 = imgui.ImVec2
+    local w, h = 40 * scale, 22 * scale
+    local t = animTo('auSw' .. id, on and 1 or 0, 16)
+    if t > 0 then
+        tog.aF(dl, V2(x - 3 * scale, y - 3 * scale), V2(x + w + 3 * scale, y + h + 3 * scale),
+            tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.16 * t), h / 2 + 3 * scale)
+    end
+    tog.aF(dl, V2(x, y), V2(x + w, y + h), tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.16 + 0.84 * t), h / 2)
+    tog.aR(dl, V2(x, y), V2(x + w, y + h), tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.40 * (1 - t)), h / 2)
+    dl:AddCircleFilled(V2(x + h / 2 + (w - h) * t, y + h / 2), h / 2 - 3 * scale,
+        tog.aU(ACCENT[1] + (0.07 - ACCENT[1]) * t, ACCENT[2] + (0.08 - ACCENT[2]) * t, ACCENT[3] + (0.10 - ACCENT[3]) * t, 0.75 + 0.25 * t), 16)
+end
+
+-- плитка настройки: иконка-бейдж, заголовок, подпись, (необязательно) переключатель. Возвращает клик
+function tog.auTile(dl, id, x, y, w, h, icon, title, sub, on, extra)
+    local V2 = imgui.ImVec2
+    imgui.SetCursorScreenPos(V2(x, y))
+    local clicked = imgui.InvisibleButton('##au' .. id, V2(w, h))
+    local hovered = imgui.IsItemHovered()
+    local hA = animTo('auTh' .. id, hovered and 1 or 0, 14)
+    local lh = imgui.GetTextLineHeight()
+    local p0, p1 = V2(x, y), V2(x + w, y + h)
+    tog.aF(dl, p0, p1, tog.aU(1, 1, 1, 0.04 + 0.025 * hA), 14 * scale)
+    tog.aR(dl, p0, p1, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.14 + 0.24 * hA), 14 * scale)
+    local bs = 36 * scale
+    local b0 = V2(x + 14 * scale, y + (h - bs) / 2)
+    tog.aF(dl, b0, V2(b0.x + bs, b0.y + bs), tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.16 + 0.08 * hA), 11 * scale)
+    drawBadgeGlyph(dl, b0.x + bs / 2, b0.y + bs / 2, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 1), ic(icon))
+    local tx = b0.x + bs + 12 * scale
+    local aw = x + w - 14 * scale - tx - ((on ~= nil) and 54 * scale or 0) - (extra or 0)
+    local subF = fitText(sub, aw)
+    dl:AddText(V2(tx, y + h / 2 - lh - 1 * scale), tog.aU(0.92, 0.93, 0.96, 1), fitText(title, aw))
+    dl:AddText(V2(tx, y + h / 2 + 2 * scale), tog.aU(0.55, 0.57, 0.63, 1), subF)
+    if hovered and subF ~= sub then imgui.SetTooltip(sub) end
+    if on ~= nil then tog.auSwitch(dl, id, x + w - 14 * scale - 40 * scale, y + (h - 22 * scale) / 2, on) end
+    return clicked
+end
+
+-- плитка с выпадающим списком (окно списка рисует tog.ddRender)
+function tog.auField(dl, c, id, okey, x, y, w, h, selW, icon, title, sub, curText, dots, items, pick)
+    local V2 = imgui.ImVec2
+    local lh = imgui.GetTextLineHeight()
+    local selH = math.floor(30 * scale)
+    local selX, selY = x + w - 14 * scale - selW, y + (h - selH) / 2
+    imgui.SetCursorScreenPos(V2(selX, selY))
+    local clicked = imgui.InvisibleButton('##ausel' .. id, V2(selW, selH))
+    local hov = imgui.IsItemHovered()
+    if clicked then
+        local v = not tog[okey]
+        tog.langOpen, tog.themeOpen, tog.styleOpen = false, false, false
+        tog[okey] = v
+    end
+    tog.auTile(dl, 'f' .. id, x, y, w, h, icon, title, sub, nil, selW + 18 * scale)
+    local isOpen = tog[okey]
+    local a = animTo('auFa' .. id, isOpen and 1 or 0, nil, 0.16)
+    local sh = animTo('auFs' .. id, hov and 1 or 0, 14)
+    local s0, s1 = V2(selX, selY), V2(selX + selW, selY + selH)
+    tog.aF(dl, s0, s1, tog.aU(1, 1, 1, 0.05 + 0.04 * sh), 8 * scale)
+    if a > 0.01 then tog.aF(dl, s0, s1, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.14 * a), 8 * scale) end
+    tog.aR(dl, s0, s1, tog.aU(lerp(1, ACCENT[1], a), lerp(1, ACCENT[2], a), lerp(1, ACCENT[3], a), lerp(0.12 + 0.10 * sh, 0.9, a)), 8 * scale, 15, 1)
+    local tx = selX + 12 * scale
+    if dots then
+        for k, col in ipairs(dots) do
+            dl:AddCircleFilled(V2(selX + 16 * scale + (k - 1) * 12 * scale, selY + selH / 2), 4.5 * scale, tog.aU(col[1], col[2], col[3], 1), 14)
+        end
+        tx = selX + 16 * scale + 3 * 12 * scale
+    end
+    dl:AddText(V2(tx, selY + (selH - lh) / 2), tog.aU(0.92, 0.93, 0.96, 1), fitText(curText, selX + selW - 34 * scale - tx))
+    local chx, chy, chs = selX + selW - 17 * scale, selY + selH / 2, 3.5 * scale
+    local cdir = 1 - 2 * a
+    local chc = tog.aU(lerp(0.65, ACCENT[1], a), lerp(0.67, ACCENT[2], a), lerp(0.73, ACCENT[3], a), 1)
+    dl:AddLine(V2(chx - chs, chy - cdir * chs / 2), V2(chx, chy + cdir * chs / 2), chc, 2)
+    dl:AddLine(V2(chx, chy + cdir * chs / 2), V2(chx + chs, chy - cdir * chs / 2), chc, 2)
+    if isOpen and imgui.IsMouseClicked(0) and not hov and not tog.ddIn[id] then tog[okey] = false end
+    tog.ddReq[#tog.ddReq + 1] = { id = id, okey = okey, alpha = a, open = isOpen, x = selX, y = selY + selH + 4 * scale, w = selW,
+        bound = c.wp.y + c.H - 10 * scale, yUp = selY - 4 * scale, top = c.wp.y + 10 * scale, maxRows = 5, items = items, pick = pick }
+end
+
+-- плитка метрики (значок, подпись, крупное значение)
+function tog.auStat(dl, x, y, w, h, icon, label, value, col)
+    local V2 = imgui.ImVec2
+    local p0, p1 = V2(x, y), V2(x + w, y + h)
+    local hA = animTo('auStH' .. icon, imgui.IsMouseHoveringRect(p0, p1) and 1 or 0, 14)
+    tog.aF(dl, p0, p1, tog.aU(1, 1, 1, 0.04 + 0.03 * hA), 16 * scale)
+    tog.aR(dl, p0, p1, tog.aU(col[1], col[2], col[3], 0.22 + 0.28 * hA), 16 * scale)
+    local bs = 34 * scale
+    local b0 = V2(x + 16 * scale, y + 16 * scale)
+    tog.aF(dl, b0, V2(b0.x + bs, b0.y + bs), tog.aU(col[1], col[2], col[3], 0.16), 11 * scale)
+    drawBadgeGlyph(dl, b0.x + bs / 2, b0.y + bs / 2, tog.aU(col[1], col[2], col[3], 1), ic(icon))
+    dl:AddText(V2(x + 16 * scale, b0.y + bs + 10 * scale), tog.aU(0.55, 0.57, 0.63, 1), fitText(label, w - 32 * scale))
+    if fontTitle then imgui.PushFont(fontTitle) end
+    dl:AddText(V2(x + 16 * scale, y + h - imgui.GetTextLineHeight() - 16 * scale), tog.aU(0.93, 0.94, 0.97, 1), fitText(value, w - 32 * scale))
+    if fontTitle then imgui.PopFont() end
+end
+
+------------------------------------------------------------------
+-- Шапка: логотип + чипы работ (или «назад» + заголовок в настройках) и кнопки справа
+------------------------------------------------------------------
+function tog.auHeader(c)
+    local V2 = imgui.ImVec2
+    local L, wp, dl, W, PAD = tog.L, c.wp, c.dl, c.W, c.PAD
+    local cb = math.floor(34 * scale)
+    local hy = math.floor(18 * scale)
+
+    -- правая группа: [обновление] [карточка игрока] [шестерёнка] [закрыть]
+    local rx = W - PAD - cb
+    imgui.SetCursorPos(V2(rx, hy))
+    if styledButton('##auclose', ic('winclose'), cb, cb, false) then setOpen(false) end
+    rx = rx - 8 * scale - cb
+    imgui.SetCursorPos(V2(rx, hy))
+    if styledButton('##augear', ic('gear'), cb, cb, tab == 4) then
+        if tab == 4 then
+            tab = tog.prevTab or 1
+            tog.themeOpen, tog.langOpen, tog.styleOpen = false, false, false
+        else
+            tog.prevTab = tab
+            tab = 4
+        end
+    end
+
+    -- карточка игрока слева от шестерёнки: иконка аккаунта, ник и ID
+    do
+        local nick = (me.nick ~= '') and me.nick or L('player')
+        local idStr = (me.id >= 0) and ('ID ' .. me.id) or 'ID -'
+        local lhH = imgui.GetTextLineHeight()
+        local av = cb - 8 * scale
+        local nickW = math.min(imgui.CalcTextSize(nick).x, 84 * scale)
+        local idW = imgui.CalcTextSize(idStr).x + 14 * scale
+        local cw = math.floor(4 * scale + av + 8 * scale + nickW + 8 * scale + idW + 6 * scale)
+        rx = rx - 8 * scale - cw
+        local x0, y0 = wp.x + rx, wp.y + hy
+        local p0, p1 = V2(x0, y0), V2(x0 + cw, y0 + cb)
+        local hov = imgui.IsMouseHoveringRect(p0, p1)
+        local hA = animTo('auPlayer', hov and 1 or 0, 14)
+        tog.aF(dl, p0, p1, tog.aU(1, 1, 1, 0.05 + 0.03 * hA), cb / 2)
+        tog.aR(dl, p0, p1, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.22 + 0.20 * hA), cb / 2)
+
+        -- аватар с иконкой аккаунта и точкой «в сети»
+        local ac = V2(x0 + 4 * scale + av / 2, y0 + cb / 2)
+        dl:AddCircleFilled(ac, av / 2, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.20), 24)
+        dl:AddCircle(ac, av / 2, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.65), 24, 1.2)
+        local glyph = (iconsOk and ic('user') ~= '') and ic('user') or firstChar(nick)
+        drawBadgeGlyph(dl, ac.x, ac.y, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 1), glyph)
+        if me.id >= 0 then
+            local dp = V2(ac.x + av * 0.36, ac.y + av * 0.36)
+            dl:AddCircleFilled(dp, 4.4 * scale, tog.aU(0.05, 0.054, 0.078, 1), 12)
+            dl:AddCircleFilled(dp, 3.0 * scale, tog.aU(GREEN[1], GREEN[2], GREEN[3], 1), 12)
+        end
+
+        -- ник и ID
+        local nx = x0 + 4 * scale + av + 8 * scale
+        dl:AddText(V2(nx, y0 + (cb - lhH) / 2), tog.aU(0.92, 0.93, 0.96, 1), fitText(nick, nickW))
+        local ix = nx + nickW + 8 * scale
+        local ch = lhH + 6 * scale
+        tog.aF(dl, V2(ix, y0 + (cb - ch) / 2), V2(ix + idW, y0 + (cb + ch) / 2), tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.16), ch / 2)
+        dl:AddText(V2(ix + 7 * scale, y0 + (cb - lhH) / 2), tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 1), idStr)
+        if hov then imgui.SetTooltip(nick .. '  ·  ' .. idStr) end
+    end
+
+    if tab == 4 then
+        local up, lbl = tog.up, nil
+        if up.st == 'checking' then lbl = L('upd_checking')
+        elseif up.st == 'avail' then lbl = icl('download', L('upd_avail', tostring(up.remote)))
+        elseif up.st == 'loading' or up.st == 'reload' then lbl = L('upd_loading')
+        elseif up.st == 'latest' then lbl = L('upd_latest', thisScript().version)
+        elseif up.st == 'err' then lbl = L('upd_err')
+        else lbl = icl('sync', L('upd_check')) end
+        local ubw = math.floor(textWidth(lbl) + 32 * scale)
+        rx = rx - 8 * scale - ubw
+        imgui.SetCursorPos(V2(rx, hy))
+        if styledButton('##auupd', lbl, ubw, cb, up.st == 'avail') then
+            if up.st == 'avail' then
+                tog.upStart('loading')
+            elseif up.st ~= 'checking' and up.st ~= 'loading' and up.st ~= 'reload' then
+                tog.checkUpdate(false)
+            end
+        end
+    end
+
+    if tab == 4 then
+        imgui.SetCursorPos(V2(PAD, hy))
+        if styledButton('##auback', ic('back'), cb, cb, false) then
+            tab = tog.prevTab or 1
+            tog.themeOpen, tog.langOpen, tog.styleOpen = false, false, false
+        end
+        if fontTitle then imgui.PushFont(fontTitle) end
+        local tlh = imgui.GetTextLineHeight()
+        dl:AddText(V2(wp.x + PAD + cb + 14 * scale, wp.y + hy + (cb - tlh) / 2), tog.aU(0.94, 0.95, 0.98, 1), L('settings'))
+        if fontTitle then imgui.PopFont() end
+    else
+        tog.auLogo(dl, wp.x + PAD, wp.y + hy, cb)
+        if fontTitle then imgui.PushFont(fontTitle) end
+        local tlh = imgui.GetTextLineHeight()
+        local nx = wp.x + PAD + cb + 10 * scale
+        local wW = imgui.CalcTextSize('Work').x
+        local pW = imgui.CalcTextSize('Helper').x
+        dl:AddText(V2(nx, wp.y + hy + (cb - tlh) / 2), tog.aU(0.95, 0.96, 0.99, 1), 'Work')
+        dl:AddText(V2(nx + wW, wp.y + hy + (cb - tlh) / 2), tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 1), 'Helper')
+        if fontTitle then imgui.PopFont() end
+
+        -- чипы работ
+        local chipsX = nx + wW + pW + 26 * scale
+        local availW = wp.x + rx - 14 * scale - chipsX
+        local n, gapC = #JOBS, 6 * scale
+        local nat, tot = {}, 0
+        for i, j in ipairs(JOBS) do
+            nat[i] = (10 + 22 + 8 + (j.builtin and 14 or 34)) * scale + imgui.CalcTextSize(tog.jobName(j)).x
+            tot = tot + nat[i]
+        end
+        local gaps = gapC * (n - 1)
+        local k = (tot + gaps > availW) and math.max(0.3, (availW - gaps) / tot) or 1
+        local cy = wp.y + hy
+        local cxs, cws, cxx = {}, {}, chipsX
+        for i = 1, n do
+            cws[i] = math.floor(math.max(60 * scale, nat[i] * k))
+            cxs[i] = math.floor(cxx)
+            cxx = cxx + cws[i] + gapC
+        end
+        -- скользящая подсветка: плавно переезжает к выбранной работе и перекрашивается
+        local si = math.max(1, math.min(n, selected))
+        local scol = JOB_COLORS[JOBS[si].id] or ACCENT
+        local hl = tog.auHL
+        if not hl then
+            hl = { x = cxs[si], w = cws[si], c = { scol[1], scol[2], scol[3] } }
+            tog.auHL = hl
+        end
+        local ka = 1 - math.exp(-hvDt * 13)
+        hl.x = hl.x + (cxs[si] - hl.x) * ka
+        hl.w = hl.w + (cws[si] - hl.w) * ka
+        for q = 1, 3 do hl.c[q] = hl.c[q] + (scol[q] - hl.c[q]) * ka end
+        local hp0, hp1 = V2(hl.x, cy), V2(hl.x + hl.w, cy + cb)
+        tog.aF(dl, hp0, hp1, tog.aU(hl.c[1], hl.c[2], hl.c[3], 0.20), cb / 2)
+        tog.aR(dl, hp0, hp1, tog.aU(hl.c[1], hl.c[2], hl.c[3], 0.60), cb / 2)
+
+        local pend
+        for i, j in ipairs(JOBS) do
+            local x, w = cxs[i], cws[i]
+            local p0, p1 = V2(x, cy), V2(x + w, cy + cb)
+            local col = JOB_COLORS[j.id] or ACCENT
+            local sel = (selected == i)
+            local xs = math.floor(22 * scale)
+            local xp = V2(p1.x - xs - 6 * scale, cy + (cb - xs) / 2)
+            local xc, xh, armed = false, false, false
+            if not j.builtin then -- крестик создаём первым: он перехватывает клик
+                imgui.SetCursorScreenPos(xp)
+                xc = imgui.InvisibleButton('##audel' .. i, V2(xs, xs))
+                xh = imgui.IsItemHovered()
+                armed = (confirmDel == j.id) and (os.clock() - confirmDelT < 3)
+            end
+            imgui.SetCursorScreenPos(p0)
+            if imgui.InvisibleButton('##aujob' .. i, V2(w, cb)) then selected = i end
+            local hov = imgui.IsItemHovered()
+            local hA = animTo('auJh' .. j.id, (hov or xh) and 1 or 0, 14)
+            local sA = animTo('auJs' .. j.id, sel and 1 or 0, 12)
+            if hA * (1 - sA) > 0.01 then tog.aF(dl, p0, p1, tog.aU(1, 1, 1, 0.06 * hA * (1 - sA)), cb / 2) end
+            local br = 11 * scale
+            local bc = V2(p0.x + 10 * scale + br, p0.y + cb / 2)
+            dl:AddCircleFilled(bc, br * (1 + 0.07 * hA), tog.aU(col[1], col[2], col[3], lerp(0.25, 0.95, sA)), 24)
+            drawBadgeGlyph(dl, bc.x, bc.y, tog.aU(lerp(col[1], 0.07, sA), lerp(col[2], 0.08, sA), lerp(col[3], 0.10, sA), 1), jobGlyph(j))
+            local ix, iy = bc.x + br * 0.75, bc.y - br * 0.75
+            if running == j.id then
+                local pulse = 0.5 + 0.5 * math.sin(os.clock() * 4)
+                dl:AddCircleFilled(V2(ix, iy), (4 + 2.5 * pulse) * scale, tog.aU(GREEN[1], GREEN[2], GREEN[3], 0.25), 14)
+                dl:AddCircleFilled(V2(ix, iy), 3.5 * scale, tog.aU(GREEN[1], GREEN[2], GREEN[3], 1), 12)
+            elseif tog.pendingRecover[j.id] then
+                dl:AddCircle(V2(ix, iy), 4 * scale, tog.aU(col[1], col[2], col[3], 1), 14, 1.6)
+            end
+            local reserve = (j.builtin and 14 or 34) * scale
+            local nameX = bc.x + br + 8 * scale
+            local nr, ng, nb = lerp(0.62, 0.95, sA), lerp(0.64, 0.96, sA), lerp(0.70, 0.99, sA)
+            dl:AddText(V2(nameX, cy + (cb - imgui.GetTextLineHeight()) / 2), tog.aU(nr, ng, nb, 1),
+                fitText(tog.jobName(j), p1.x - reserve - nameX))
+            if not j.builtin then
+                local dv = animTo('auJd' .. j.id, (hov or xh or armed) and 1 or 0, 16)
+                if dv > 0.01 then
+                    local rc = armed and RED or { 1, 1, 1 }
+                    tog.aF(dl, xp, V2(xp.x + xs, xp.y + xs), tog.aU(rc[1], rc[2], rc[3], (armed and 0.22 or 0.08) * dv), 7 * scale)
+                    local xg = ic('trash')
+                    local ir = armed and RED or { 0.80, 0.82, 0.88 }
+                    drawText(dl, V2(xp.x + (xs - textWidth(xg)) / 2, xp.y + (xs - imgui.GetTextLineHeight()) / 2),
+                        tog.aU(ir[1], ir[2], ir[3], dv), xg)
+                end
+                if xh then imgui.SetTooltip(armed and L('del_tip2') or L('del_tip')) end
+                if xc then
+                    if armed then pend = i; confirmDel = nil else confirmDel, confirmDelT = j.id, os.clock() end
+                end
+            end
+        end
+        if pend then removeJob(pend) end
+    end
+    local dyl = math.floor(wp.y + hy + cb + 14 * scale) + 0.5
+    dl:AddLine(V2(math.floor(wp.x + PAD), dyl), V2(math.floor(wp.x + W - PAD), dyl), tog.aU(1, 1, 1, 0.07), 1)
+end
+
+------------------------------------------------------------------
+-- Вкладка «Сеанс»: герой-карта с линией пульса + 4 плитки метрик + баннер незавершённого сеанса
+------------------------------------------------------------------
+function tog.auSession(c, rec, bannerH)
+    local V2 = imgui.ImVec2
+    local L, wp, dl, PAD, W, lh, gap = tog.L, c.wp, c.dl, c.PAD, c.W, c.lh, c.gap
+    local job, s = c.job, c.s
+    local isRun = (running == job.id)
+    local jc = JOB_COLORS[job.id] or ACCENT
+    local GRAY = tog.aU(0.55, 0.57, 0.63, 1)
+    local MW = W - PAD * 2
+    local bodyH = c.bodyB - c.top
+    local lw = math.floor(MW * 0.58)
+    local x0, y0 = wp.x + PAD, wp.y + c.top
+    local rr = 18 * scale
+
+    tog.auSt(0)
+    -- герой-карта
+    local p0, p1 = V2(x0, y0), V2(x0 + lw, y0 + bodyH)
+    tog.aF(dl, p0, p1, tog.aU(1, 1, 1, 0.04), rr)
+    dl:PushClipRect(V2(x0 + 6 * scale, y0 + 6 * scale), V2(x0 + lw - 6 * scale, y0 + bodyH - 6 * scale), true)
+    for i = 1, 28 do
+        dl:AddCircleFilled(V2(x0 + lw * 0.88, y0 + bodyH * 0.08), 230 * scale * i / 28, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.0036), 64)
+    end
+    dl:PopClipRect()
+    tog.aR(dl, p0, p1, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.26), rr)
+
+    local ix = x0 + 22 * scale
+    drawText(dl, V2(ix, y0 + 18 * scale), GRAY, icl('coins', L('earned_session')))
+
+    -- статус справа сверху
+    local chipTxt = isRun and L('chip_run') or L('chip_pause')
+    local cc = isRun and GREEN or { 0.60, 0.62, 0.68 }
+    local chW, chH = imgui.CalcTextSize(chipTxt).x + 30 * scale, lh + 8 * scale
+    local chX, chY = x0 + lw - 18 * scale - chW, y0 + 14 * scale
+    tog.aF(dl, V2(chX, chY), V2(chX + chW, chY + chH), tog.aU(cc[1], cc[2], cc[3], 0.15), chH / 2)
+    local pulse = isRun and (0.5 + 0.5 * math.sin(os.clock() * 4)) or 0
+    dl:AddCircleFilled(V2(chX + 13 * scale, chY + chH / 2), (3 + 2 * pulse) * scale, tog.aU(cc[1], cc[2], cc[3], 0.30 + 0.70 * (1 - pulse * 0.4)), 10)
+    dl:AddText(V2(chX + 22 * scale, chY + (chH - lh) / 2), tog.aU(cc[1], cc[2], cc[3], 1), chipTxt)
+
+    -- крупная сумма
+    local bigY = y0 + 18 * scale + lh + 8 * scale
+    if fontBig then imgui.PushFont(fontBig) end
+    local blh = imgui.GetTextLineHeight()
+    dl:AddText(V2(ix, bigY), tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 1), fmtMoney(math.floor(tog.auN('e' .. job.id, s.sEarned) + 0.5)))
+    if fontBig then imgui.PopFont() end
+
+    -- чистая прибыль
+    local profit = math.floor(tog.auN('p' .. job.id, s.sEarned - s.sSpent) + 0.5)
+    local pStr = ((profit >= 0) and '+' or '-') .. fmtMoney(math.abs(profit))
+    local pc = (profit >= 0) and GREEN or RED
+    local py = bigY + blh + 6 * scale
+    if fontTitle then imgui.PushFont(fontTitle) end
+    local tlh = imgui.GetTextLineHeight()
+    local pw = imgui.CalcTextSize(pStr).x
+    dl:AddText(V2(ix, py), tog.aU(pc[1], pc[2], pc[3], 1), pStr)
+    if fontTitle then imgui.PopFont() end
+    drawText(dl, V2(ix + pw + 12 * scale, py + tlh - lh - 2 * scale), GRAY, icl('chart', L('net_profit')))
+
+    -- линия пульса: бежит при идущем сеансе, почти ровная на паузе
+    local wTop, wBot = py + tlh + 14 * scale, y0 + bodyH - 18 * scale
+    if wBot - wTop > 26 * scale then
+        local wx0, wx1 = x0 + 22 * scale, x0 + lw - 22 * scale
+        local mid, half = (wTop + wBot) / 2, (wBot - wTop) / 2
+        local amp = animTo('auAmp', isRun and 1 or 0.07, 5)
+        local t = os.clock() * (isRun and 0.5 or 0.12)
+        dl:AddLine(V2(wx0, mid), V2(wx1, mid), tog.aU(1, 1, 1, 0.06), 1)
+        local N, prev = 180, nil
+        for k = 0, N do
+            local u = k / N
+            local pt = V2(wx0 + u * (wx1 - wx0), mid - tog.auBeat(u * 2.4 + t) * amp * half * 0.92)
+            if prev then
+                local al = math.sin(math.pi * u)
+                dl:AddLine(prev, pt, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.10 * al), 6 * scale)
+                dl:AddLine(prev, pt, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], al), 2.2 * scale)
+            end
+            prev = pt
+        end
+    end
+
+    -- плитки метрик 2x2
+    local gx = x0 + lw + gap
+    local gw = MW - lw - gap
+    local tw2 = math.floor((gw - gap) / 2)
+    local th2 = math.floor((bodyH - gap) / 2)
+    local e1 = tog.auSt(1)
+    tog.auStat(dl, gx, y0 + (1 - e1) * 12 * scale, tw2, th2, 'clock', L('time'), fmtTime(s.sSecs), { 0.92, 0.93, 0.96 })
+    local e2 = tog.auSt(2)
+    tog.auStat(dl, gx + tw2 + gap, y0 + (1 - e2) * 12 * scale, tw2, th2, 'check', L('orders'),
+        tostring(math.floor(tog.auN('c' .. job.id, s.sCount) + 0.5)), GREEN)
+    local e3 = tog.auSt(3)
+    tog.auStat(dl, gx, y0 + th2 + gap + (1 - e3) * 12 * scale, tw2, th2, 'wallet', L('spent'),
+        fmtMoney(math.floor(tog.auN('s' .. job.id, s.sSpent) + 0.5)), RED)
+    local e4 = tog.auSt(4)
+    tog.auStat(dl, gx + tw2 + gap, y0 + th2 + gap + (1 - e4) * 12 * scale, tw2, th2, 'chart', L('per_hour'),
+        fmtMoney(math.floor(tog.auN('h' .. job.id, perHour(s.sEarned, s.sSecs)) + 0.5)), ACCENT)
+    tog.auC = 1
+
+    -- баннер незавершённого сеанса
+    if rec then
+        local by0 = wp.y + c.bodyB + gap
+        tog.auC = c.aB or 1
+        imgui.PushClipRect(V2(x0 - 2 * scale, by0), V2(x0 + MW + 2 * scale, by0 + bannerH), true)
+        tog.aF(dl, V2(x0, by0), V2(x0 + MW, by0 + bannerH), tog.aU(jc[1], jc[2], jc[3], 0.12), 16 * scale)
+        tog.aR(dl, V2(x0, by0), V2(x0 + MW, by0 + bannerH), tog.aU(jc[1], jc[2], jc[3], 0.38), 16 * scale)
+        local bpad, bwid, bth = 16 * scale, math.floor(150 * scale), math.floor(34 * scale)
+        local textW = MW - bpad * 2 - bwid * 2 - gap * 2
+        local l1 = icl('hourglass', L('rec_title', (rec.ts:gsub('_', ' '))))
+        local l2 = L('rec_line', fmtMoney(rec.earned), fmtTime(rec.secs), rec.count)
+        local ty = by0 + (bannerH - lh * 2 - 4 * scale) / 2
+        drawText(dl, V2(x0 + bpad, ty), tog.aU(0.92, 0.93, 0.96, 1), fitText(l1, textW))
+        dl:AddText(V2(x0 + bpad, ty + lh + 4 * scale), GRAY, fitText(l2, textW))
+        local relY = c.bodyB + gap + (bannerH - bth) / 2
+        imgui.SetCursorPos(V2(PAD + MW - bpad - bwid * 2 - gap, relY))
+        if styledButton('##aurecCont', icl('play', L('btn_continue')), bwid, bth, true) then tog.resolveRecover(job.id, true) end
+        imgui.SetCursorPos(V2(PAD + MW - bpad - bwid, relY))
+        if styledButton('##aurecDrop', icl('history', L('btn_to_history')), bwid, bth, false) then tog.resolveRecover(job.id, false) end
+        imgui.PopClipRect()
+        tog.auC = 1
+    end
+end
+
+------------------------------------------------------------------
+-- Вкладка «История»: итоги-пилюля сверху и список сеансов карточками
+------------------------------------------------------------------
+function tog.auHistory(c)
+    local V2 = imgui.ImVec2
+    local L, wp, dl, PAD, W, lh, gap = tog.L, c.wp, c.dl, c.PAD, c.W, c.lh, c.gap
+    local job, s = c.job, c.s
+    local jc = JOB_COLORS[job.id] or ACCENT
+    local GRAY = tog.aU(0.55, 0.57, 0.63, 1)
+    local MW = W - PAD * 2
+    local x0, y0 = wp.x + PAD, wp.y + c.top
+
+    tog.auSt(0)
+    -- итоги за всё время
+    local allNet = s.total - s.spent
+    local sumStr = L('alltime'):format(fmtMoney(s.total), fmtMoney(s.spent), (allNet >= 0) and '+' or '-',
+        fmtMoney(math.abs(allNet)), fmtTime(s.secs), s.count)
+    sumStr = fitText(sumStr, MW - 36 * scale)
+    local sh = math.floor(lh + 18 * scale)
+    tog.aF(dl, V2(x0, y0), V2(x0 + MW, y0 + sh), tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.10), sh / 2)
+    tog.aR(dl, V2(x0, y0), V2(x0 + MW, y0 + sh), tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.26), sh / 2)
+    dl:AddText(V2(x0 + (MW - imgui.CalcTextSize(sumStr).x) / 2, y0 + (sh - lh) / 2), tog.aU(0.84, 0.86, 0.90, 1), sumStr)
+
+    -- столбцы
+    local weights = { 1.85, 1.0, 1.0, 1.4, 1.4, 1.4 }
+    local alignR = { false, false, true, true, true, true }
+    local wsum = 0
+    for _, w in ipairs(weights) do wsum = wsum + w end
+    local colPad = 18 * scale
+    local colL, colW, cx = {}, {}, colPad
+    for i = 1, 6 do
+        colW[i] = (MW - colPad * 2) * weights[i] / wsum
+        colL[i] = cx
+        cx = cx + colW[i]
+    end
+    local function colX(i, str)
+        if alignR[i] then return colL[i] + colW[i] - imgui.CalcTextSize(str).x end
+        return colL[i]
+    end
+    local heads = { L('h_date'), L('h_time'), L('h_orders'), L('h_income'), L('h_expense'), L('h_total') }
+    local hy = y0 + sh + gap
+    for i = 1, 6 do dl:AddText(V2(x0 + colX(i, heads[i]), hy), GRAY, heads[i]) end
+
+    local items = {}
+    for i = #log, 1, -1 do
+        if log[i].job == job.id then items[#items + 1] = log[i] end
+    end
+
+    local listTop = c.top + sh + gap + lh + 8 * scale
+    local listH = c.bodyB - listTop
+    local rowH = math.floor(lh + 20 * scale)
+    local rg = 6 * scale
+
+    imgui.SetCursorPos(V2(PAD, listTop))
+    imgui.PushStyleColor(imgui.Col.ChildBg, V4(0, 0, 0, 0))
+    imgui.BeginChild('##auhist', V2(MW, listH), false, imgui.WindowFlags.NoScrollWithMouse + imgui.WindowFlags.NoScrollbar)
+    local cdl = imgui.GetWindowDrawList()
+    local cwp = imgui.GetWindowPos()
+
+    -- плавная прокрутка колесом
+    do
+        local now = os.clock()
+        local dt = math.min(0.05, now - hs.last)
+        hs.last = now
+        if hs.job ~= job.id then
+            hs.job, hs.target, hs.cur, hs.set = job.id, 0, 0, 0
+            imgui.SetScrollY(0)
+        else
+            local maxY = imgui.GetScrollMaxY()
+            if imgui.IsWindowHovered() then
+                local wheel = imgui.GetIO().MouseWheel
+                if wheel ~= 0 then hs.target = hs.target - wheel * (rowH + rg) * 2 end
+            end
+            hs.target = math.max(0, math.min(maxY, hs.target))
+            hs.cur = hs.cur + (hs.target - hs.cur) * (1 - math.exp(-dt * 14))
+            if math.abs(hs.target - hs.cur) < 0.5 then hs.cur = hs.target end
+            imgui.SetScrollY(hs.cur)
+            hs.set = hs.cur
+        end
+    end
+
+    if #items == 0 then
+        cdl:AddText(V2(cwp.x + 6 * scale, cwp.y + 10 * scale), tog.aU(0.50, 0.52, 0.58, 1), fitText(L('hist_empty'), MW - 12 * scale))
+    else
+        local sy = imgui.GetScrollY()
+        local hovW = imgui.IsWindowHovered()
+        for i, e in ipairs(items) do
+            local ry0 = cwp.y + (i - 1) * (rowH + rg) - sy
+            if ry0 + rowH > cwp.y and ry0 < cwp.y + listH then
+                local ee = tog.auSt(math.min(i, 9) + 1)
+                local rx0 = cwp.x + (1 - ee) * 16 * scale
+                local a, b = V2(rx0, ry0), V2(rx0 + MW, ry0 + rowH)
+                local hov = hovW and imgui.IsMouseHoveringRect(a, b)
+                local hA = animTo('auHr' .. i, hov and 1 or 0, 14)
+                tog.aF(cdl, a, b, tog.aU(1, 1, 1, 0.035 + 0.045 * hA), 12 * scale)
+                tog.aF(cdl, V2(rx0, ry0 + 10 * scale), V2(rx0 + 3 * scale, ry0 + rowH - 10 * scale),
+                    tog.aU(jc[1], jc[2], jc[3], 1), 2)
+                local net = e.earned - e.spent
+                local vals = { (e.ts:gsub('_', ' ')), fmtTime(e.secs), tostring(e.count), '+' .. fmtMoney(e.earned),
+                    '-' .. fmtMoney(e.spent), ((net >= 0) and '+' or '-') .. fmtMoney(math.abs(net)) }
+                local gC, rC, wC = { GREEN[1], GREEN[2], GREEN[3] }, { RED[1], RED[2], RED[3] }, { 0.80, 0.82, 0.88 }
+                local cols = { wC, wC, wC, gC, rC, (net >= 0) and gC or rC }
+                for k = 1, 6 do
+                    local cl = cols[k]
+                    cdl:AddText(V2(rx0 + colX(k, vals[k]), ry0 + (rowH - lh) / 2), tog.aU(cl[1], cl[2], cl[3], 1), vals[k])
+                end
+            end
+        end
+        imgui.SetCursorPos(V2(0, #items * (rowH + rg)))
+        imgui.Dummy(V2(0, 0))
+    end
+    imgui.EndChild()
+    imgui.PopStyleColor()
+end
+
+------------------------------------------------------------------
+-- Вкладка «Настройки»: сетка плиток 2 колонки
+------------------------------------------------------------------
+function tog.auSettings(c)
+    local V2 = imgui.ImVec2
+    local L, wp, dl, PAD, W, lh = tog.L, c.wp, c.dl, c.PAD, c.W, c.lh
+    local GRAY = tog.aU(0.55, 0.57, 0.63, 1)
+    local MW = W - PAD * 2
+    local gap = 10 * scale
+    local tw = math.floor((MW - gap) / 2)
+    local th = math.floor(60 * scale)
+    local x0 = wp.x + PAD
+    local y = wp.y + c.top
+    local m, a = tog.map, tog.af
+
+    drawText(dl, V2(x0, y), GRAY, icl('gear', L('set_general')))
+    local gy = y + lh + 8 * scale
+    local function pos(i, baseY, off)
+        tog.auSt(i + (off or 0))
+        return x0 + ((i - 1) % 2) * (tw + gap), baseY + math.floor((i - 1) / 2) * (th + gap)
+    end
+
+    local tx, ty = pos(1, gy)
+    if tog.auTile(dl, 'dist', tx, ty, tw, th, 'target', L('set_dist'), L('set_dist_sub'), showDist) then
+        showDist = not showDist
+        saveTheme()
+    end
+    tx, ty = pos(2, gy)
+    if tog.auTile(dl, 'pause', tx, ty, tw, th, 'hourglass', L('set_pause'), L('set_pause_sub'), tog.pause) then
+        tog.pause = not tog.pause
+        tog.act = os.clock()
+        saveTheme()
+    end
+    tx, ty = pos(3, gy)
+    if tog.auTile(dl, 'mini', tx, ty, tw, th, 'chart', L('set_mini'), L('set_mini_sub'), tog.miShow) then
+        tog.miShow = not tog.miShow
+        tog.saveMini()
+    end
+
+    -- быстрая карта: плитка + кнопка выбора клавиши
+    tx, ty = pos(4, gy)
+    do
+        local chipW, chipH = math.floor(100 * scale), math.floor(30 * scale)
+        local swXr = tx + tw - 14 * scale - 40 * scale
+        local chipX, chipY = swXr - 14 * scale - chipW, ty + (th - chipH) / 2
+        imgui.SetCursorScreenPos(V2(chipX, chipY))
+        local keyClick = imgui.InvisibleButton('##aumapkey', V2(chipW, chipH))
+        local hovK = imgui.IsItemHovered()
+        if keyClick then m.binding = not m.binding end
+        local subTxt = (m.key == 0) and L('map_sub_none') or L('map_sub')
+        if tog.auTile(dl, 'map', tx, ty, tw, th, 'map', L('set_map'), subTxt, m.on, chipW + 18 * scale) then
+            m.on = not m.on
+            m.binding = false
+            tog.saveMap()
+        end
+        local chA = animTo('auMapK', hovK and 1 or 0, 14)
+        local bA = animTo('auMapB', m.binding and 1 or 0, 14)
+        local c0, c1 = V2(chipX, chipY), V2(chipX + chipW, chipY + chipH)
+        tog.aF(dl, c0, c1, tog.aU(1, 1, 1, 0.05 + 0.04 * chA), 8 * scale)
+        if bA > 0.01 then tog.aF(dl, c0, c1, tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.22 * bA), 8 * scale) end
+        tog.aR(dl, c0, c1, tog.aU(lerp(1, ACCENT[1], bA), lerp(1, ACCENT[2], bA), lerp(1, ACCENT[3], bA), lerp(0.12 + 0.10 * chA, 0.9, bA)), 8 * scale, 15, 1)
+        local kLabel, kc
+        if m.binding then kLabel, kc = L('key_press'), ACCENT
+        elseif m.key == 0 then kLabel, kc = L('key_none'), { 0.55, 0.57, 0.63 }
+        else kLabel, kc = tog.keyName(m.key) or '?', { 0.92, 0.93, 0.96 } end
+        kLabel = fitText(kLabel, chipW - 12 * scale)
+        dl:AddText(V2(chipX + (chipW - imgui.CalcTextSize(kLabel).x) / 2, chipY + (chipH - lh) / 2), tog.aU(kc[1], kc[2], kc[3], 1), kLabel)
+        if hovK then imgui.SetTooltip(L('key_tip')) end
+    end
+
+    tx, ty = pos(5, gy)
+    if tog.auTile(dl, 'af', tx, ty, tw, th, 'sync', L('set_af'), a.id and L('set_af_sub', a.id) or L('set_af_noid'), a.on) then
+        a.on = not a.on
+        a.last = 0
+        tog.saveAf()
+    end
+
+    -- язык
+    tx, ty = pos(6, gy)
+    local litems = {}
+    for _, code in ipairs(tog.LANGS) do
+        litems[#litems + 1] = { name = tog.LANG_NAME[code], sel = (tog.lang == code), accent = ACCENT }
+    end
+    tog.auField(dl, c, 'lang', 'langOpen', tx, ty, tw, th, math.floor(140 * scale), 'globe', L('set_lang'), L('set_lang_sub'),
+        tog.LANG_NAME[tog.lang] or '?', nil, litems, function(i) tog.setLang(tog.LANGS[i]) end)
+
+    -- оформление
+    local cy = gy + 3 * (th + gap) + 6 * scale
+    drawText(dl, V2(x0, cy), GRAY, icl('palette', L('set_custom')))
+    local gy2 = cy + lh + 8 * scale
+
+    tx, ty = pos(1, gy2, 6)
+    local titems = {}
+    for i, t in ipairs(THEMES) do
+        titems[#titems + 1] = { name = L('theme' .. i), sel = (themeIdx == i), accent = t.accent, dots = { t.accent, t.green, t.red } }
+    end
+    local cur = THEMES[themeIdx]
+    tog.auField(dl, c, 'theme', 'themeOpen', tx, ty, tw, th, math.floor(180 * scale), 'palette', L('set_theme'), L('set_theme_sub'),
+        L('theme' .. themeIdx), { cur.accent, cur.green, cur.red }, titems, function(i) setTheme(i) end)
+
+    tx, ty = pos(2, gy2, 6)
+    local sitems = {
+        { name = L('style_classic'), sel = (tog.style == 'classic'), accent = ACCENT },
+        { name = L('style_aurora'), sel = (tog.style == 'aurora'), accent = ACCENT },
+    }
+    tog.auField(dl, c, 'style', 'styleOpen', tx, ty, tw, th, math.floor(150 * scale), 'gear', L('set_style'), L('set_style_sub'),
+        L('style_' .. (tog.style == 'aurora' and 'aurora' or 'classic')), nil, sitems,
+        function(i) tog.style = (i == 2) and 'aurora' or 'classic'; tog.saveStyle() end)
+end
+
+------------------------------------------------------------------
+-- Нижняя панель: сегмент «Сеанс / История» слева, кнопки действий справа
+------------------------------------------------------------------
+function tog.auActions(c)
+    local V2 = imgui.ImVec2
+    local L, wp, dl, PAD, W, lh = tog.L, c.wp, c.dl, c.PAD, c.W, c.lh
+    local y, h = c.ay, c.bh
+    local names = { icl('session', L('tab_session')), icl('history', L('tab_history')) }
+    local segW = math.floor(math.max(textWidth(names[1]), textWidth(names[2])) + 44 * scale)
+    local x0 = wp.x + PAD
+    tog.aF(dl, V2(x0, wp.y + y), V2(x0 + segW * 2, wp.y + y + h), tog.aU(1, 1, 1, 0.05), h / 2)
+    tog.aR(dl, V2(x0, wp.y + y), V2(x0 + segW * 2, wp.y + y + h), tog.aU(1, 1, 1, 0.08), h / 2)
+    local sA = animTo('auseg', (tab == 2) and 1 or 0, nil, 0.22)
+    local hx = x0 + segW * sA
+    tog.aF(dl, V2(hx + 3 * scale, wp.y + y + 3 * scale), V2(hx + segW - 3 * scale, wp.y + y + h - 3 * scale),
+        tog.aU(ACCENT[1], ACCENT[2], ACCENT[3], 0.95), (h - 6 * scale) / 2)
+    for i = 1, 2 do
+        imgui.SetCursorScreenPos(V2(x0 + (i - 1) * segW, wp.y + y))
+        if imgui.InvisibleButton('##auseg' .. i, V2(segW, h)) then tab = i end
+        local act = animTo('auSegT' .. i, (tab == i) and 1 or 0, 14)
+        local tw = textWidth(names[i])
+        drawText(dl, V2(x0 + (i - 1) * segW + (segW - tw) / 2, wp.y + y + (h - lh) / 2),
+            tog.aU(lerp(0.62, 0.07, act), lerp(0.64, 0.08, act), lerp(0.70, 0.10, act), 1), names[i])
+    end
+
+    local gap = c.gap
+    if tab == 1 then
+        local job = c.job
+        local isRun = (running == job.id)
+        local bw = math.floor(176 * scale)
+        if isRun then -- дышащее зелёное кольцо вокруг «Остановить», пока идёт сеанс
+            local pl = 0.5 + 0.5 * math.sin(os.clock() * 3)
+            local ex = (2 + 3 * pl) * scale
+            local bx0 = wp.x + W - PAD - bw * 2 - gap
+            tog.aR(dl, V2(bx0 - ex, wp.y + y - ex), V2(bx0 + bw + ex, wp.y + y + h + ex),
+                tog.aU(GREEN[1], GREEN[2], GREEN[3], 0.12 + 0.30 * (1 - pl)), 9 * scale + ex, 15, 2)
+        end
+        imgui.SetCursorPos(V2(W - PAD - bw * 2 - gap, y))
+        if styledButton('##austart', isRun and icl('stop', L('btn_stop')) or icl('play', L('btn_start')), bw, h, true) then
+            if isRun then
+                running = nil
+                saveStats()
+            else
+                running = job.id
+                tog.act = os.clock()
+                lastMoney = readMoney()
+                lastTick = os.clock()
+            end
+        end
+        imgui.SetCursorPos(V2(W - PAD - bw, y))
+        if styledButton('##aufinish', icl('report', L('btn_finish')), bw, h, false) then finishSession(job.id) end
+    else
+        local armed = (os.clock() - confirmClear) < 3
+        local lbl = icl('trash', armed and L('clear_confirm') or L('clear_btn'))
+        local bw = math.floor(textWidth(lbl) + 48 * scale)
+        imgui.SetCursorPos(V2(W - PAD - bw, y))
+        if styledButton('##auclear', lbl, bw, h, armed) then
+            if armed then
+                clearHistory(c.job.id)
+                confirmClear = 0
+            else
+                confirmClear = os.clock()
+            end
+        end
+    end
+end
+
+------------------------------------------------------------------
+-- Главная функция нового макета (вызывается из draw() при tog.style == 'aurora')
+------------------------------------------------------------------
+function tog.drawAurora()
+    local V2 = imgui.ImVec2
+    local L = tog.L
+    if tab ~= 1 and tab ~= 2 and tab ~= 4 then tab = 1 end
+    local sx, sy = getScreenResolution()
+    local W, H = math.floor(480 * scale) * 2, math.floor(280 * scale) * 2
+    local PAD = math.floor(22 * scale)
+
+    -- анимация появления: плавный fade + всплытие снизу
+    local now = os.clock()
+    if now - tog.auLast > 0.25 then tog.auT0, tog.auKT = now, now + 0.12 end
+    tog.auLast = now
+    local oa = math.max(0, math.min(1, (now - tog.auT0) / 0.32))
+    local eo = 1 - (1 - oa) ^ 3
+    tog.auA, tog.auC = eo, 1
+
+    imgui.GetBackgroundDrawList():AddRectFilled(V2(0, 0), V2(sx, sy), tog.aU(0.02, 0.02, 0.04, 0.30))
+
+    imgui.PushStyleVarFloat(imgui.StyleVar.WindowRounding, 22 * scale)
+    imgui.PushStyleVarVec2(imgui.StyleVar.WindowPadding, V2(0, 0))
+    imgui.PushStyleColor(imgui.Col.WindowBg, V4(0.050, 0.054, 0.078, 0.985 * tog.auA))
+    imgui.PushStyleColor(imgui.Col.Border, V4(ACCENT[1], ACCENT[2], ACCENT[3], 0.30 * tog.auA))
+    imgui.SetNextWindowPos(V2(math.floor((sx - W) / 2), math.floor((sy - H) / 2 + (1 - eo) * 22 * scale)), imgui.Cond.Always, V2(0, 0))
+    imgui.SetNextWindowSize(V2(W, H), imgui.Cond.Always)
+    imgui.Begin('###WorkStats', nil, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize
+        + imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoSavedSettings + imgui.WindowFlags.NoScrollbar)
+
+    local wp = imgui.GetWindowPos()
+    local dl = imgui.GetWindowDrawList()
+    local lh = imgui.GetTextLineHeight()
+
+    -- мягкое свечение фона: круги целиком внутри окна, без обрезки, поэтому нет жёстких краёв
+    do
+        local gl = {
+            { wp.x + W - 170 * scale, wp.y + 150 * scale, 150 * scale, ACCENT },
+            { wp.x + 150 * scale, wp.y + H - 130 * scale, 130 * scale, { 0.62, 0.46, 0.95 } },
+        }
+        for _, g in ipairs(gl) do
+            for i = 1, 30 do
+                dl:AddCircleFilled(V2(g[1], g[2]), g[3] * i / 30, tog.aU(g[4][1], g[4][2], g[4][3], 0.0042), 64)
+            end
+        end
+    end
+
+    local c = { wp = wp, dl = dl, W = W, H = H, PAD = PAD, lh = lh }
+    tog.auHeader(c)
+
+    local job = JOBS[selected] or JOBS[1]
+    c.job, c.s = job, stats[job.id]
+    local key = tab .. '|' .. selected
+    if key ~= tog.auKey then tog.auKey, tog.auKT = key, now end
+    tog.auCT = now - tog.auKT
+    c.gap = math.floor(10 * scale)
+    c.bh = math.floor(44 * scale)
+    c.top = math.floor(86 * scale)
+    c.ay = H - math.floor(14 * scale) - lh - math.floor(12 * scale) - c.bh
+    local recNow = (tab == 1) and tog.pendingRecover[job.id] or nil
+    if recNow then tog.auRec = recNow end
+    local aB = animTo('auBan', recNow and 1 or 0, nil, 0.3) -- баннер плавно выезжает и убирается
+    local bannerH = math.floor(64 * scale * aB)
+    local rec = (aB > 0.02) and tog.auRec or nil
+    c.aB = aB
+    c.bodyB = c.ay - c.gap - (rec and (bannerH + c.gap) or 0)
+
+    if tab == 1 then tog.auSession(c, rec, bannerH)
+    elseif tab == 2 then tog.auHistory(c)
+    else tog.auSettings(c) end
+    tog.auC = 1
+    if tab ~= 4 then tog.auActions(c) end
+
+    dl:AddText(V2(wp.x + PAD, wp.y + H - 14 * scale - lh), tog.aU(0.45, 0.47, 0.54, 1),
+        balance and L('footer_bal', fmtMoney(balance)) or L('footer_nobal'))
+
+    imgui.End()
+    imgui.PopStyleColor(2)
+    imgui.PopStyleVar(2)
+    tog.ddRender()
+end
+
+
 local function draw()
     if not iconChecked then checkIcons() end
     local L = tog.L
     local nowH = os.clock()
     hvDt, hvLast = math.min(0.05, nowH - hvLast), nowH
+    if tog.style == 'aurora' then return tog.drawAurora() end
+    tog.auA, tog.auC = 1, 1
     local sx, sy = getScreenResolution()
-    local W, H = math.floor(780 * scale), math.floor(620 * scale)
+    local aur = (tog.style == 'aurora')
+    -- в настройках окно плавно становится выше (есть место для строки «Стиль меню»)
+    local W, H = math.floor(780 * scale), math.floor((620 + 60 * animTo('seth', (tab == 4) and 1 or 0, nil, 0.26)) * scale)
     local SB = math.floor(210 * scale)
     local PAD = math.floor(20 * scale)
 
     local bgdl = imgui.GetBackgroundDrawList()
     bgdl:AddRectFilled(imgui.ImVec2(0, 0), imgui.ImVec2(sx, sy), U32(0.02, 0.02, 0.04, 0.30))
 
-    imgui.PushStyleVarFloat(imgui.StyleVar.WindowRounding, 14 * scale)
+    imgui.PushStyleVarFloat(imgui.StyleVar.WindowRounding, (aur and 20 or 14) * scale)
     imgui.PushStyleVarVec2(imgui.StyleVar.WindowPadding, imgui.ImVec2(0, 0))
-    imgui.PushStyleColor(imgui.Col.WindowBg, V4(BG[1], BG[2], BG[3], 0.97))
-    imgui.PushStyleColor(imgui.Col.Border, V4(1, 1, 1, 0.07))
+    imgui.PushStyleColor(imgui.Col.WindowBg, aur and V4(0.050, 0.054, 0.078, 0.985) or V4(BG[1], BG[2], BG[3], 0.97))
+    imgui.PushStyleColor(imgui.Col.Border, aur and V4(ACCENT[1], ACCENT[2], ACCENT[3], 0.30) or V4(1, 1, 1, 0.07))
 
     imgui.SetNextWindowPos(imgui.ImVec2(sx / 2, sy / 2), imgui.Cond.Always, imgui.ImVec2(0.5, 0.5))
     imgui.SetNextWindowSize(imgui.ImVec2(W, H), imgui.Cond.Always)
@@ -1390,31 +2332,72 @@ local function draw()
     local wp = imgui.GetWindowPos()
     local dl = imgui.GetWindowDrawList()
 
+    -- WorkHelper: мягкое свечение фона (слоями кругов, обрезано чуть внутри скруглённых углов)
+    if aur then
+        local ins = 8 * scale
+        dl:PushClipRect(imgui.ImVec2(wp.x + ins, wp.y + ins), imgui.ImVec2(wp.x + W - ins, wp.y + H - ins), true)
+        local gl = {
+            { wp.x + W * 0.82, wp.y + H * 0.04, 300 * scale, ACCENT },
+            { wp.x + W * 0.95, wp.y + H * 0.98, 260 * scale, { 0.62, 0.46, 0.95 } },
+        }
+        for _, g in ipairs(gl) do
+            for i = 1, 10 do
+                dl:AddCircleFilled(imgui.ImVec2(g[1], g[2]), g[3] * i / 10, U32(g[4][1], g[4][2], g[4][3], 0.011), 56)
+            end
+        end
+        dl:PopClipRect()
+    end
+
     ----------------------------------------------------------------
     -- Сайдбар
     ----------------------------------------------------------------
     local sbA = animTo('sbhide', (tab == 4) and 1 or 0, nil, 0.26) -- 0 = сайдбар виден, 1 = скрыт
     if sbA < 0.995 then
         local wps = imgui.ImVec2(wp.x - SB * sbA, wp.y) -- сайдбар уезжает влево
-        dl:AddRectFilled(wps, imgui.ImVec2(wps.x + SB, wps.y + H), U32(PANEL[1], PANEL[2], PANEL[3], 1), 14 * scale, 5)
+        dl:AddRectFilled(wps, imgui.ImVec2(wps.x + SB, wps.y + H), U32(PANEL[1], PANEL[2], PANEL[3], aur and 0.60 or 1), (aur and 20 or 14) * scale, 5)
         dl:AddLine(imgui.ImVec2(wps.x + SB, wps.y + 14 * scale), imgui.ImVec2(wps.x + SB, wps.y + H - 14 * scale), U32(1, 1, 1, 0.07), 1)
 
-        -- логотип (три столбика) и название
+        -- логотип и название
         local lg = math.floor(36 * scale)
         local l0 = imgui.ImVec2(wps.x + PAD, wps.y + PAD)
-        dl:AddRectFilled(l0, imgui.ImVec2(l0.x + lg, l0.y + lg), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.15), 11 * scale)
-        local bw3, bx = 5 * scale, l0.x + 9 * scale
-        for k, hh in ipairs({ 0.38, 0.62, 0.86 }) do
-            local top = l0.y + lg - 8 * scale - (lg - 16 * scale) * hh
-            dl:AddRectFilled(imgui.ImVec2(bx + (k - 1) * (bw3 + 2 * scale), top),
-                imgui.ImVec2(bx + (k - 1) * (bw3 + 2 * scale) + bw3, l0.y + lg - 8 * scale),
-                U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.6 + 0.2 * k), 2)
+        if aur then
+            -- WorkHelper: градиентный значок с линией пульса
+            for gi = 1, 5 do
+                dl:AddRectFilled(imgui.ImVec2(l0.x - gi * 1.5 * scale, l0.y - gi * 1.5 * scale),
+                    imgui.ImVec2(l0.x + lg + gi * 1.5 * scale, l0.y + lg + gi * 1.5 * scale),
+                    U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.035), (11 + gi * 1.5) * scale)
+            end
+            dl:AddRectFilled(l0, imgui.ImVec2(l0.x + lg, l0.y + lg), U32(ACCENT[1], ACCENT[2], ACCENT[3], 1), 11 * scale)
+            dl:AddRectFilled(l0, imgui.ImVec2(l0.x + lg, l0.y + lg * 0.5), U32(1, 1, 1, 0.16), 11 * scale, 3)
+            local pts = { { 0.12, 0.58 }, { 0.32, 0.58 }, { 0.43, 0.26 }, { 0.56, 0.82 }, { 0.67, 0.44 }, { 0.75, 0.58 }, { 0.88, 0.58 } }
+            for k = 1, #pts - 1 do
+                dl:AddLine(imgui.ImVec2(l0.x + lg * pts[k][1], l0.y + lg * pts[k][2]),
+                    imgui.ImVec2(l0.x + lg * pts[k + 1][1], l0.y + lg * pts[k + 1][2]), U32(0.06, 0.07, 0.10, 1), 2.4 * scale)
+            end
+            dl:AddCircleFilled(imgui.ImVec2(l0.x + lg * 0.88, l0.y + lg * 0.58), 2.6 * scale, U32(1, 1, 1, 1), 12)
+            if fontTitle then imgui.PushFont(fontTitle) end
+            local nx0 = l0.x + lg + 12 * scale
+            dl:AddText(imgui.ImVec2(nx0, l0.y - 3 * scale), U32(0.95, 0.96, 0.99, 1), 'Work')
+            local wW = imgui.CalcTextSize('Work').x
+            dl:AddText(imgui.ImVec2(nx0 + wW, l0.y - 3 * scale), U32(ACCENT[1], ACCENT[2], ACCENT[3], 1), 'Helper')
+            if fontTitle then imgui.PopFont() end
+            dl:AddText(imgui.ImVec2(nx0, l0.y + lg - imgui.GetTextLineHeight() + 2 * scale),
+                U32(0.50, 0.52, 0.58, 1), L('sub_aur'))
+        else
+            dl:AddRectFilled(l0, imgui.ImVec2(l0.x + lg, l0.y + lg), U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.15), 11 * scale)
+            local bw3, bx = 5 * scale, l0.x + 9 * scale
+            for k, hh in ipairs({ 0.38, 0.62, 0.86 }) do
+                local top = l0.y + lg - 8 * scale - (lg - 16 * scale) * hh
+                dl:AddRectFilled(imgui.ImVec2(bx + (k - 1) * (bw3 + 2 * scale), top),
+                    imgui.ImVec2(bx + (k - 1) * (bw3 + 2 * scale) + bw3, l0.y + lg - 8 * scale),
+                    U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.6 + 0.2 * k), 2)
+            end
+            if fontTitle then imgui.PushFont(fontTitle) end
+            dl:AddText(imgui.ImVec2(l0.x + lg + 12 * scale, l0.y - 3 * scale), U32(0.92, 0.93, 0.96, 1), 'WorkStats')
+            if fontTitle then imgui.PopFont() end
+            dl:AddText(imgui.ImVec2(l0.x + lg + 12 * scale, l0.y + lg - imgui.GetTextLineHeight() + 2 * scale),
+                U32(0.50, 0.52, 0.58, 1), L('sub_title'))
         end
-        if fontTitle then imgui.PushFont(fontTitle) end
-        dl:AddText(imgui.ImVec2(l0.x + lg + 12 * scale, l0.y - 3 * scale), U32(0.92, 0.93, 0.96, 1), 'WorkStats')
-        if fontTitle then imgui.PopFont() end
-        dl:AddText(imgui.ImVec2(l0.x + lg + 12 * scale, l0.y + lg - imgui.GetTextLineHeight() + 2 * scale),
-            U32(0.50, 0.52, 0.58, 1), L('sub_title'))
 
         -- заголовок секции
         local secY = PAD + lg + 20 * scale
@@ -1455,7 +2438,8 @@ local function draw()
                 dl:AddRectFilled(sp, p2, U32(1, 1, 1, 0.045 * hA * (1 - sA)), 9 * scale)
             end
             if sA > 0.01 then
-                dl:AddRectFilled(sp, p2, U32(col[1], col[2], col[3], 0.13 * sA), 9 * scale)
+                dl:AddRectFilled(sp, p2, U32(col[1], col[2], col[3], (aur and 0.20 or 0.13) * sA), 9 * scale)
+                if aur then dl:AddRect(sp, p2, U32(col[1], col[2], col[3], 0.50 * sA), 9 * scale) end
                 -- полоска слева "вырастает" из центра
                 local barH = (rowH - 16 * scale) * sA
                 local midY = sp.y + rowH / 2
@@ -1528,7 +2512,7 @@ local function draw()
         local pc1 = imgui.ImVec2(wps.x + SB - 10 * scale, wps.y + H - 10 * scale)
 
         dl:AddRectFilled(pc0, pc1, U32(1, 1, 1, 0.04), 11 * scale)
-        dl:AddRect(pc0, pc1, U32(1, 1, 1, 0.06), 11 * scale)
+        dl:AddRect(pc0, pc1, aur and U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.28) or U32(1, 1, 1, 0.06), 11 * scale)
         local av = 17 * scale
         local avc = imgui.ImVec2(pc0.x + 14 * scale + av, pc0.y + pcH / 2)
         dl:AddCircleFilled(avc, av, U32(ACCENT[1], ACCENT[2], ACCENT[3], 0.2), 24)
@@ -1605,7 +2589,7 @@ local function draw()
     dl:AddText(P(mx + cb + 12 * scale, y + (cb - tlh) / 2), U32(0.94, 0.95, 0.98, 1), L('settings'))
     if fontTitle then imgui.PopFont() end
     imgui.SetCursorPos(imgui.ImVec2(mx, y))
-    if styledButton('##back', ic('back'), cb, cb, false) then tab = tog.prevTab or 1; tog.themeOpen = false; tog.langOpen = false end
+    if styledButton('##back', ic('back'), cb, cb, false) then tab = tog.prevTab or 1; tog.themeOpen = false; tog.langOpen = false; tog.styleOpen = false end
     else
     local hb = math.floor(tlh)
     local nx = mx + hb + 10 * scale
@@ -2126,7 +3110,7 @@ local function draw()
                 local hov = imgui.IsItemHovered()
                 if clicked then
                     local v = not tog[okey]
-                    tog.langOpen, tog.themeOpen = false, false
+                    tog.langOpen, tog.themeOpen, tog.styleOpen = false, false, false
                     tog[okey] = v
                 end
                 local isOpen = tog[okey]
@@ -2177,6 +3161,15 @@ local function draw()
             local cur = THEMES[themeIdx]
             field('theme', 'themeOpen', cY + tgH + gap, math.floor(190 * scale), 'palette', L('set_theme'), L('set_theme_sub'),
                 L('theme' .. themeIdx), { cur.accent, cur.green, cur.red }, titems, function(i) setTheme(i) end)
+
+            -- стиль меню
+            local sitems = {
+                { name = L('style_classic'), sel = (tog.style == 'classic'), accent = ACCENT },
+                { name = L('style_aurora'), sel = (tog.style == 'aurora'), accent = ACCENT },
+            }
+            field('style', 'styleOpen', cY + (tgH + gap) * 2, math.floor(150 * scale), 'gear', L('set_style'), L('set_style_sub'),
+                L('style_' .. (tog.style == 'aurora' and 'aurora' or 'classic')), nil, sitems,
+                function(i) tog.style = (i == 2) and 'aurora' or 'classic'; tog.saveStyle() end)
         end
 
     end
