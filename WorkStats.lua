@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.34')
+script_version('1.35')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -1123,15 +1123,30 @@ local function tick()
         local s = stats[running]
         s.sSecs = s.sSecs + dt
         s.secs = s.secs + dt
-        local delta = m - lastMoney
-        if delta > 0 then
-            -- такси считается по сообщению сервера (см. sampev.onServerMessage),
-            -- рост баланса игнорируется; остальные работы - как раньше
-            if running ~= 'taxi' then creditPayout(s, delta) end
-        elseif delta < 0 then -- расходы (аренда, бензин и т.д.)
-            s.sSpent, s.spent = s.sSpent - delta, s.spent - delta
+        local drop = tog.drop
+        if drop then
+            -- Деньги упали на одном из прошлых тиков. Ждём 1.5 с: если они вернулись -
+            -- это сброс баланса сервером (ResetPlayerMoney + GivePlayerMoney), а не трата.
+            if m >= drop.base then
+                tog.drop = nil
+                local extra = m - drop.base
+                if extra > 0 and running ~= 'taxi' then creditPayout(s, extra) end
+            elseif now - drop.t >= 1.5 then
+                tog.drop = nil
+                s.sSpent, s.spent = s.sSpent + (drop.base - m), s.spent + (drop.base - m)
+            end
+        else
+            local delta = m - lastMoney
+            if delta > 0 then
+                -- такси считается по сообщению сервера (см. sampev.onServerMessage),
+                -- рост баланса игнорируется; остальные работы - как раньше
+                if running ~= 'taxi' then creditPayout(s, delta) end
+            elseif delta < 0 then -- возможная трата: подтверждаем через 1.5 с
+                tog.drop = { base = lastMoney, t = now }
+            end
         end
     end
+    if not running then tog.drop = nil end
     lastMoney = m
 
     -- кик / обрыв соединения: сеанс не идёт в историю, а помечается незавершённым
