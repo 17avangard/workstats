@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.32')
+script_version('1.33')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -3286,6 +3286,7 @@ end
 
 local distFrame
 distFrame = imgui.OnFrame(function()
+    if distFrame then distFrame.HideCursor = not window[0] end
     return showDist and (markerPos() ~= nil or window[0])
 end, drawDist)
 distFrame.HideCursor = true
@@ -3362,6 +3363,7 @@ function tog.drawMini()
 end
 
 tog.miFrame = imgui.OnFrame(function()
+    if tog.miFrame then tog.miFrame.HideCursor = not window[0] end
     return tog.miShow and (running ~= nil or window[0])
 end, tog.drawMini)
 tog.miFrame.HideCursor = true
