@@ -1,7 +1,7 @@
 script_name('WorkStats')
 script_author('17avangard')
 script_description('Подсчёт заработка за сеанс на работах Arizona RP. Команда: /wss')
-script_version('1.33')
+script_version('1.34')
 
 -- ВАЖНО: файл должен быть в кодировке UTF-8.
 
@@ -256,7 +256,7 @@ end
 tog.loadMini()
 tog.t3 = tog.miShow and 1 or 0
 
--- autofind: раз в 2 секунды повторяет /find ID (ID берётся из последнего /find или /af ID)
+-- autofind: раз в 3 секунды повторяет /find ID (ID берётся из последнего /find или /af ID)
 tog.af = { on = false, id = nil, last = 0, t = 0, lastT = os.clock() }
 tog.afPath = getWorkingDirectory() .. '\\config\\work_stats_af.cfg'
 function tog.saveAf()
@@ -300,7 +300,7 @@ function tog.afTick()
     if not a.on or not a.id then return end
     if not isSampAvailable() or sampGetGamestate() ~= 3 then return end
     local now = os.clock()
-    if now - a.last < 2 then return end
+    if now - a.last < 3 then return end
     a.last = now
     sampSendChat('/find ' .. a.id)
 end
@@ -375,7 +375,7 @@ tog.TR = {
         set_dist = 'Расстояние до метки', set_dist_sub = 'Показывать при наличии метки. Двигайте плашку мышью',
         set_pause = 'Автопауза', set_pause_sub = 'Пауза, если долго нет выплат',
         set_mini = 'Мини-окно', set_mini_sub = 'Доход и время сеанса поверх игры. Двигайте мышью',
-        set_af = 'Autofind', set_af_sub = 'Повторять /find %d раз в 2 секунды', set_af_noid = 'Сначала введите /find ID или /af ID',
+        set_af = 'Autofind', set_af_sub = 'Повторять /find %d раз в 3 секунды', set_af_noid = 'Сначала введите /find ID или /af ID',
         set_style = 'Стиль меню', set_style_sub = 'Классический или новый WorkHelper', style_classic = 'Классический', style_aurora = 'WorkHelper', sub_aur = 'Ваш помощник в работе',
         set_map = 'Быстрая карта', map_sub_none = 'Назначьте клавишу справа', map_sub = 'Видна, пока зажата клавиша',
         key_press = 'Нажмите...', key_none = 'Не задана',
@@ -420,7 +420,7 @@ tog.TR = {
         set_dist = 'Distance to marker', set_dist_sub = 'Shown when a marker exists. Drag the badge with the mouse',
         set_pause = 'Auto-pause', set_pause_sub = 'Pause if there are no payouts for a long time',
         set_mini = 'Mini window', set_mini_sub = 'Session income and time over the game. Drag with the mouse',
-        set_af = 'Autofind', set_af_sub = 'Repeat /find %d every 2 seconds', set_af_noid = 'First type /find ID or /af ID',
+        set_af = 'Autofind', set_af_sub = 'Repeat /find %d every 3 seconds', set_af_noid = 'First type /find ID or /af ID',
         set_style = 'Menu style', set_style_sub = 'Classic or the new WorkHelper', style_classic = 'Classic', style_aurora = 'WorkHelper', sub_aur = 'Your work helper',
         set_map = 'Quick map', map_sub_none = 'Assign a key on the right', map_sub = 'Visible while the key is held',
         key_press = 'Press...', key_none = 'Not set',
@@ -465,7 +465,7 @@ tog.TR = {
         set_dist = 'Відстань до мітки', set_dist_sub = 'Показувати за наявності мітки. Рухайте плашку мишею',
         set_pause = 'Автопауза', set_pause_sub = 'Пауза, якщо довго немає виплат',
         set_mini = 'Міні-вікно', set_mini_sub = 'Дохід і час сеансу поверх гри. Рухайте мишею',
-        set_af = 'Autofind', set_af_sub = 'Повторювати /find %d кожні 2 секунди', set_af_noid = 'Спершу введіть /find ID або /af ID',
+        set_af = 'Autofind', set_af_sub = 'Повторювати /find %d кожні 3 секунди', set_af_noid = 'Спершу введіть /find ID або /af ID',
         set_style = 'Стиль меню', set_style_sub = 'Класичний або новий WorkHelper', style_classic = 'Класичний', style_aurora = 'WorkHelper', sub_aur = 'Ваш помічник у роботі',
         set_map = 'Швидка карта', map_sub_none = 'Призначте клавішу праворуч', map_sub = 'Видно, поки затиснута клавіша',
         key_press = 'Натисніть...', key_none = 'Не задано',
