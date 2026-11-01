@@ -352,7 +352,7 @@ tog.TR = {
         hist_empty = 'История пуста. Нажмите "Завершить сеанс", и он появится здесь.',
         clear_confirm = 'Нажмите ещё раз для подтверждения', clear_btn = 'Очистить историю и итоги',
         alltime = 'За всё время: +%s  /  -%s  ·  итог %s%s  ·  %s  ·  выплат: %d',
-        set_general = 'Функции',
+        set_general = 'Общие настройки',
         set_dist = 'Расстояние до метки', set_dist_sub = 'Показывать при наличии метки. Двигайте плашку мышью',
         set_pause = 'Автопауза', set_pause_sub = 'Пауза, если долго нет выплат',
         set_mini = 'Мини-окно', set_mini_sub = 'Доход и время сеанса поверх игры. Двигайте мышью',
@@ -1016,7 +1016,7 @@ function tog.updTick()
                 u.st, u.remote = 'avail', v
                 if u.silent then say(tog.L('msg_upd_avail', v)) end
             else
-                u.st = 'latest'
+                u.st, u.remote = 'latest', v
             end
         elseif os.clock() - u.t0 > 15 then
             u.st = 'err'
@@ -1631,7 +1631,7 @@ local function draw()
         if up.st == 'checking' then lbl = L('upd_checking')
         elseif up.st == 'avail' then lbl = icl('download', L('upd_avail', tostring(up.remote)))
         elseif up.st == 'loading' or up.st == 'reload' then lbl = L('upd_loading')
-        elseif up.st == 'latest' then lbl = L('upd_latest', thisScript().version)
+        elseif up.st == 'latest' then lbl = L('upd_latest', thisScript().version) .. ' (GitHub: ' .. tostring(up.remote) .. ')'
         elseif up.st == 'err' then lbl = L('upd_err')
         else lbl = icl('sync', L('upd_check')) end
         local ubw = math.floor(textWidth(lbl) + 32 * scale)
